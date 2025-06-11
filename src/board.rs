@@ -17,9 +17,9 @@ impl Color {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Move {
-	color: Color,
-	active: Coord,
-	pivot: Coord
+	pub color: Color,
+	pub active: Coord,
+	pub pivot: Coord
 }
 
 impl Move {
@@ -38,10 +38,10 @@ impl Move {
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Board {
-	board_size: i32,
-	max_gap: i32,
-	white: HashSet<Coord>,
-	black: HashSet<Coord>
+	pub board_size: i32,
+	pub max_gap: i32,
+	pub white: HashSet<Coord>,
+	pub black: HashSet<Coord>
 }
 
 #[derive(Debug, PartialEq, Eq)]

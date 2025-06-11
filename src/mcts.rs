@@ -1,6 +1,13 @@
-use board::*;
+use crate::board::*;
 
-pub fn main() {
-	let board = Board::start_position(9, 2);
-	board.show_board();
+pub trait Heuristic {
+	fn heuristic(&self, board: &Board) -> f32;
+}
+
+pub struct PieceCountHeuristic {}
+
+impl Heuristic for PieceCountHeuristic {
+	fn heuristic(&self, board: &Board) -> f32 {
+		(board.white.len() - board.black.len()) as f32
+	}
 }
