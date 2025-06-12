@@ -1,7 +1,5 @@
 use crate::board::*;
 use std::collections::BinaryHeap;
-use std::sync::Arc;
-use rayon::prelude::*;
 
 type Valuation = i32;
 
@@ -9,9 +7,9 @@ pub trait Heuristic {
 	fn heuristic(&self, board: &Board) -> Valuation;
 }
 
-pub fn minimax_eval<H: Heuristic+Clone+std::marker::Send+std::marker::Sync>(board: Arc<Board>, depth: usize, heuristic: Arc<H>) -> Valuation {
+pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Valuation {
 	if depth == 0 {
-		return heuristic.heuristic(&board);
+		return heuristic.heuristic(&board)
 	} else if let Some(Color::White) = board.winner() {
 		return Valuation::MAX;
 	} else if let Some(Color::Black) = board.winner() {
@@ -19,22 +17,21 @@ pub fn minimax_eval<H: Heuristic+Clone+std::marker::Send+std::marker::Sync>(boar
 	}
 	match board.whose_move {
 		Color::White => {
-			board.moves().collect::<Vec<_>>().par_iter().map(|mov| minimax_eval(Arc::new(board.apply(&mov.clone())), depth-1, Arc::clone(&heuristic))).max().unwrap_or(Valuation::MIN)
+			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).max().unwrap_or(Valuation::MIN)
 		},
 		Color::Black => {
-			board.moves().collect::<Vec<_>>().par_iter().map(|mov| minimax_eval(Arc::new(board.apply(&mov.clone())), depth-1, Arc::clone(&heuristic))).min().unwrap_or(Valuation::MAX)
+			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).min().unwrap_or(Valuation::MAX)
 		}
 	}
 }
 
-pub fn best_move<H: Heuristic+Clone+std::marker::Send+std::marker::Sync>(board: &Board, depth: usize, heuristic: H) -> Option<Move> {
+pub fn best_move<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Option<Move> {
 	match board.whose_move {
-		Color::White => board.moves().max_by_key(|mov| minimax_eval(board.apply(&mov).into(), depth-1, Arc::new(heuristic.clone()))),
-		Color::Black => board.moves().min_by_key(|mov| minimax_eval(board.apply(&mov).into(), depth-1, Arc::new(heuristic.clone())))
+		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)),
+		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic))
 	}
 }
 
-#[derive(Clone)]
 pub struct PieceCountHeuristic {}
 
 impl Heuristic for PieceCountHeuristic {
@@ -43,7 +40,6 @@ impl Heuristic for PieceCountHeuristic {
 	}
 }
 
-#[derive(Clone)]
 pub struct LegalMovesHeuristic {}
 
 impl Heuristic for LegalMovesHeuristic {
@@ -54,7 +50,6 @@ impl Heuristic for LegalMovesHeuristic {
 	}
 }
 
-#[derive(Clone)]
 pub struct CentroidDistanceHeuristic { pub power: f32 }
 
 impl Heuristic for CentroidDistanceHeuristic {
@@ -80,7 +75,6 @@ impl Heuristic for CentroidDistanceHeuristic {
 	}
 }
 
-#[derive(Clone)]
 pub struct ConnectedComponentsHeuristic {}
 
 impl Heuristic for ConnectedComponentsHeuristic {
@@ -104,7 +98,6 @@ impl Heuristic for ConnectedComponentsHeuristic {
 	}
 }
 
-#[derive(Clone)]
 pub struct NthSmallestStringHeuristic { pub n: usize }
 
 impl Heuristic for NthSmallestStringHeuristic {
@@ -139,19 +132,17 @@ impl Heuristic for NthSmallestStringHeuristic {
 	}
 }
 
-#[derive(Clone)]
 pub struct LinearCombinationHeuristic {
-	pub h1: NthSmallestStringHeuristic,
-	pub h2: ConnectedComponentsHeuristic,
-	pub h3: CentroidDistanceHeuristic
+	pub terms: Vec<(Valuation, Box<dyn Heuristic>)>
 }
-
-unsafe impl Sync for LinearCombinationHeuristic {}
-unsafe impl Send for LinearCombinationHeuristic {}
 
 impl Heuristic for LinearCombinationHeuristic {
 	fn heuristic(&self, board: &Board) -> Valuation {
-		self.h1.heuristic(&board) + self.h2.heuristic(&board) + 6*self.h3.heuristic(&board)
+		let mut sum = 0;
+		for (weight, subheuristic) in self.terms.iter() {
+			sum += weight * subheuristic.heuristic(&board);
+		}
+		sum
 	}
 }
 
