@@ -304,9 +304,11 @@ impl Board {
 				for opp_coord in self.capturable_around(*color, *active, dest) {
 					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
 				}
-				for &opp_coord in conversions {
+				for opp_coord in self.convertible_around(*color, *active, dest) {
 					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
-					new_board.pieces_of_mut(*color).insert(opp_coord);
+					if conversions.contains(&opp_coord) {
+						new_board.pieces_of_mut(*color).insert(opp_coord);
+					}
 				}
 			},
 			Move::Placement { color, at } => {

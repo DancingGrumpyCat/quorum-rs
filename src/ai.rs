@@ -1,5 +1,6 @@
 use crate::board::*;
 use std::collections::BinaryHeap;
+use rayon::prelude::*;
 
 type Valuation = i32;
 
@@ -17,15 +18,15 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) ->
 	}
 	match board.whose_move {
 		Color::White => {
-			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).max().unwrap_or(Valuation::MIN)
+			board.moves().collect::<Vec<_>>().par_iter().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).max().unwrap_or(Valuation::MIN)
 		},
 		Color::Black => {
-			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).min().unwrap_or(Valuation::MAX)
+			board.moves().collect::<Vec<_>>().par_iter().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).min().unwrap_or(Valuation::MAX)
 		}
 	}
 }
 
-pub fn minimax_choose<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Option<Move> {
+pub fn best_move<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Option<Move> {
 	match board.whose_move {
 		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)),
 		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic))
