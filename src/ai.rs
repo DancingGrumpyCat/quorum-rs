@@ -1,6 +1,5 @@
 use crate::board::*;
 use std::collections::BinaryHeap;
-use rayon::prelude::*;
 
 type Valuation = i32;
 
