@@ -18,10 +18,10 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) ->
 	}
 	match board.whose_move {
 		Color::White => {
-			board.moves().collect::<Vec<_>>().par_iter().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).max().unwrap_or(Valuation::MIN)
+			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).max().unwrap_or(Valuation::MIN)
 		},
 		Color::Black => {
-			board.moves().collect::<Vec<_>>().par_iter().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).min().unwrap_or(Valuation::MAX)
+			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).min().unwrap_or(Valuation::MAX)
 		}
 	}
 }
