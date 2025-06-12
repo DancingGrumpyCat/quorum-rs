@@ -1,5 +1,6 @@
 use im::HashSet;
 use std::cmp;
+use itertools::Itertools;
 
 type Coord = (i32, i32);
 
@@ -17,31 +18,37 @@ impl Color {
 	}
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Move {
-	Movement(Movement),
+	Movement { color: Color, active: Coord, pivot: Coord, conversions: Vec<Coord> },
 	Placement { color: Color, at: Coord }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct Movement {
-	pub color: Color,
-	pub active: Coord,
-	pub pivot: Coord
-}
-
-impl Movement {
+impl Move {
 	pub fn dest(&self) -> Coord {
-		let dx = self.pivot.0 - self.active.0;
-		let dy = self.pivot.1 - self.active.1;
-		(self.pivot.0 + dx, self.pivot.1 + dy)
+		match self {
+			Move::Movement { active, pivot, .. } => {
+				let dx = pivot.0 - active.0;
+				let dy = pivot.1 - active.1;
+				(pivot.0 + dx, pivot.1 + dy)
+			},
+			Move::Placement { at, .. } => at.clone()
+		}
 	}
 
 	pub fn gap(&self) -> i32 {
-		assert!(self.active != self.pivot);
-		cmp::max((self.active.0 - self.pivot.0).abs() - 1, (self.active.1 - self.pivot.1).abs() - 1)
+		match self {
+			Move::Movement { active, pivot, .. } => {
+				assert!(active != pivot);
+				cmp::max((active.0 - pivot.0).abs() - 1, (active.1 - pivot.1).abs() - 1)
+			},
+			Move::Placement { .. } => 0
+		}
 	}
 
+	pub fn movement(color: Color, active: Coord, pivot: Coord) -> Move {
+		Move::Movement { color, active, pivot, conversions: vec![] }
+	}
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -112,37 +119,37 @@ impl Board {
 		}
 	}
 
-	pub fn valid_move(&self, mov: Move) -> Option<IllegalMoveReason> {
-		if let Move::Movement(mvmt) = mov {
-			let Movement { color, active, pivot } = mvmt;
-			let pieces = if color == Color::Black { &self.black } else { &self.white };
-			if !pieces.contains(&active) {
-				return Some(IllegalMoveReason::ActiveNotOwned);
-			}
-			if !pieces.contains(&pivot) {
-				return Some(IllegalMoveReason::PivotNotOwned);
-			}
-			let dest = mvmt.dest();
-			if self.all_pieces().contains(&dest) {
-				return Some(IllegalMoveReason::DestNotEmpty);
-			}
-			if !self.in_bounds(dest) {
-				return Some(IllegalMoveReason::DestNotInBounds);
-			}
-			if mvmt.gap() > self.max_gap {
-				return Some(IllegalMoveReason::GapTooBig);
-			}
-			None
-		} else if let Move::Placement { color, at } = mov {
-			if self.all_pieces().contains(&at) {
-				Some(IllegalMoveReason::DestNotEmpty)
-			} else if self.reserve_of(color) <= 0 {
-				Some(IllegalMoveReason::EmptyReserve)
-			} else {
+	pub fn valid_move(&self, mov: &Move) -> Option<IllegalMoveReason> {
+		match mov {
+			Move::Movement { color, active, pivot, .. } => {
+				let pieces = if *color == Color::Black { &self.black } else { &self.white };
+				if !pieces.contains(&active) {
+					return Some(IllegalMoveReason::ActiveNotOwned);
+				}
+				if !pieces.contains(&pivot) {
+					return Some(IllegalMoveReason::PivotNotOwned);
+				}
+				let dest = mov.dest();
+				if self.all_pieces().contains(&dest) {
+					return Some(IllegalMoveReason::DestNotEmpty);
+				}
+				if !self.in_bounds(dest) {
+					return Some(IllegalMoveReason::DestNotInBounds);
+				}
+				if mov.gap() > self.max_gap {
+					return Some(IllegalMoveReason::GapTooBig);
+				}
 				None
+			},
+			Move::Placement { color, at } => {
+				if self.all_pieces().contains(&at) {
+					Some(IllegalMoveReason::DestNotEmpty)
+				} else if self.reserve_of(*color) <= 0 {
+					Some(IllegalMoveReason::EmptyReserve)
+				} else {
+					None
+				}
 			}
-		} else {
-			panic!()
 		}
 	}
 
@@ -226,29 +233,26 @@ impl Board {
 		else { None }
 	}
 
-	pub fn convertible_around(&self, color: Color, active: Coord ) -> Vec<Coord> {
-		let mut convertibles = vec![];
-		for neighbor in self.neighborhood(active) {
-			let flanker_x = (neighbor.0 - active.0) * 2 + active.0;
-			let flanker_y = (neighbor.1 - active.1) * 2 + active.1;
-			let flanker = (flanker_x, flanker_y);
-
-			if self.pieces_of(color.opponent()).contains(&neighbor) && self.pieces_of(color).contains(&flanker)  {
-				convertibles.push(neighbor)
-			}
-		}
-		convertibles
+	pub fn capturable_around<'a>(&'a self, color: Color, active: Coord, dest: Coord) -> impl Iterator<Item=Coord> + 'a {
+		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
+			self.pieces_of(color.opponent()).contains(&maybe_captured)
+				&& self.neighborhood(maybe_captured).into_iter().all(|liberty|
+					(self.all_pieces().contains(&liberty) || liberty == dest)
+					&& !self.neighborhood(dest).contains(&active))
+		})
 	}
 
-	pub fn capturable_around(&self, color: Color, active: Coord) -> Vec<Coord> {
-		let mut capturables = vec![];
-		for maybe_captured in self.neighborhood(active) {
-			if self.neighborhood(maybe_captured).into_iter().all(|coord| self.all_pieces().contains(&coord))
-			   && self.pieces_of(color.opponent()).contains(&maybe_captured) {
-				capturables.push(maybe_captured)
-			}
-		}
-		capturables
+	pub fn convertible_around<'a>(&'a self, color: Color, active: Coord, dest: Coord ) -> impl Iterator<Item=Coord> + 'a {
+		self.neighborhood(dest).into_iter().filter(move |neighbor| {
+			let flanker_x = (neighbor.0 - dest.0) * 2 + dest.0;
+			let flanker_y = (neighbor.1 - dest.1) * 2 + dest.1;
+			let flanker = (flanker_x, flanker_y);
+
+			flanker != active
+				&& self.pieces_of(color.opponent()).contains(&neighbor)
+				&& self.pieces_of(color).contains(&flanker)
+				&& !self.capturable_around(color, active, dest).collect::<Vec<_>>().contains(&active)
+		})
 	}
 
 	pub fn moves_of<'a>(&'a self, color: Color) -> impl Iterator<Item=Move> + 'a {
@@ -256,8 +260,21 @@ impl Board {
 
 		for active in self.pieces_of(color).iter().cloned() {
 			for pivot in self.pieces_of(color).iter().cloned() {
-				if self.valid_move(Move::Movement(Movement { color, active, pivot })).is_none() {
-					mvmts.push(Move::Movement(Movement { color, active, pivot }));
+				if self.valid_move(&Move::movement(color, active, pivot)).is_none() {
+					if self.reserve_of(color) < 0 {
+						panic!("Negative reserve for {:?}: {:?} - {:?} = {:?}",
+							color, TOTAL_PIECES_PER_COLOR, self.pieces_of(color).len(), self.reserve_of(color));
+					}
+					let base_mvmt = Move::movement(color, active, pivot);
+					let conversions: Vec<_> = self.convertible_around(color, active, base_mvmt.dest())
+						.collect();
+					if conversions.len() as i32 <= self.reserve_of(color) {
+						mvmts.push(Move::Movement { color, active, pivot, conversions });
+					} else {
+						for combination in conversions.into_iter().combinations(self.reserve_of(color) as usize) {
+								mvmts.push(Move::Movement { color, active, pivot, conversions: combination.into() });
+						}
+					}
 				}
 			}
 		}
@@ -267,7 +284,7 @@ impl Board {
 			.filter(move |coord| self.reserve_of(color) > 0 && !self.all_pieces().contains(&coord))
 			.map(move |coord| Move::Placement { color: color, at: coord });
 
-		mvmts.into_iter().filter(|&x| self.valid_move(x).is_none())
+		mvmts.into_iter().filter(|x| self.valid_move(x).is_none())
 			.chain(placements)
 	}
 
@@ -275,26 +292,26 @@ impl Board {
 		self.moves_of(self.whose_move)
 	}
 
-	pub fn apply(&self, mov: Move) -> Board {
-		assert_eq!(None, self.valid_move(mov));
+	pub fn apply(&self, mov: &Move) -> Board {
+		assert_eq!(None, self.valid_move(&mov));
 		let mut new_board = self.clone();
-		if let Move::Movement(mvmt) = mov {
-			let Movement { color, active, .. } = mvmt;
+		match mov {
+			Move::Movement { color, active, conversions, .. } => {
+				let dest = mov.dest();
+				new_board.pieces_of_mut(*color).insert(dest);
+				new_board.pieces_of_mut(*color).remove(&active);
 
-			let dest = mvmt.dest();
-			new_board.pieces_of_mut(color).insert(dest);
-			new_board.pieces_of_mut(color).remove(&active);
-
-			for opp_coord in self.convertible_around(color, dest) {
-				new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
-				new_board.pieces_of_mut(color).insert(opp_coord);
+				for opp_coord in self.capturable_around(*color, *active, dest) {
+					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
+				}
+				for &opp_coord in conversions {
+					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
+					new_board.pieces_of_mut(*color).insert(opp_coord);
+				}
+			},
+			Move::Placement { color, at } => {
+				new_board.pieces_of_mut(*color).insert(*at);
 			}
-
-			for opp_coord in self.capturable_around(color, dest) {
-				new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
-			}
-		} else if let Move::Placement { color, at } = mov {
-			new_board.pieces_of_mut(color).insert(at);
 		}
 		new_board.whose_move = new_board.whose_move.opponent();
 		new_board
@@ -311,117 +328,112 @@ mod tests {
 		let mut board = Board::start_position(BOARD_SIZE, 2);
 		board.white.insert((4,3));
 
-		assert_eq!(None, board.valid_move(Move::Movement(Movement { color: Color::White, active: (0,0), pivot: (1,1) })));
+		assert_eq!(None, board.valid_move(&Move::movement(Color::White, (0,0), (1,1))));
 
 		assert_eq!(IllegalMoveReason::GapTooBig,
-			board.valid_move(Move::Movement(Movement { color: Color::White, active: (0,2), pivot: (4,3) })).expect("GapTooBig not illegal"));
-
+			board.valid_move(&Move::movement(Color::White, (0,2), (4,3)))
+			.expect("GapTooBig not illegal"));
 		assert_eq!(IllegalMoveReason::DestNotEmpty,
-			board.valid_move(Move::Movement(Movement { color: Color::White, active: (0,0), pivot: (3,0) }))
+			board.valid_move(&Move::movement(Color::White, (0,0), (3,0)))
 			.expect("DestNotEmpty not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::White, active: (0,0), pivot: (2,2) }))
+			board.valid_move(&Move::movement(Color::White, (0,0), (2,2)))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::ActiveNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::White, active: (2,2), pivot: (4,4) }))
+			board.valid_move(&Move::movement(Color::White, (2,2), (4,4)))
 			.expect("ActiveNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::White, active: (0,0), pivot: (3,3) }))
+			board.valid_move(&Move::movement(Color::White, (0,0), (3,3)))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::DestNotInBounds,
-			board.valid_move(Move::Movement(Movement { color: Color::White, active: (1,1), pivot: (1,0) }))
+			board.valid_move(&Move::movement(Color::White, (1,1), (1,0)))
 			.expect("DestNotInBounds not illegal"));
 
 		fn hvflip(coord: Coord) -> Coord {
 			(BOARD_SIZE - coord.0 - 1, BOARD_SIZE - coord.1 - 1)
 		}
 		assert_eq!(IllegalMoveReason::DestNotEmpty,
-			board.valid_move(Move::Movement(Movement
-					{ color: Color::White, active: hvflip((0,0)), pivot: hvflip((3,0)) }))
+			board.valid_move(&Move::movement(Color::White, hvflip((0,0)), hvflip((3,0))))
 			.expect("DestNotEmpty not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement
-					{ color: Color::White, active: hvflip((0,0)), pivot: hvflip((2,2)) }))
+			board.valid_move(&Move::movement(Color::White, hvflip((0,0)), hvflip((2,2))))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::ActiveNotOwned,
-			board.valid_move(Move::Movement(Movement
-					{ color: Color::White, active: hvflip((2,2)), pivot: hvflip((4,4)) }))
+			board.valid_move(&Move::movement(Color::White, hvflip((2,2)), hvflip((4,4))))
 			.expect("ActiveNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement
-					{ color: Color::White, active: hvflip((0,0)), pivot: hvflip((3,3)) }))
+			board.valid_move(&Move::movement(Color::White, hvflip((0,0)), hvflip((3,3))))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::DestNotInBounds,
-			board.valid_move(Move::Movement(Movement
-					{ color: Color::White, active: hvflip((1,1)), pivot: hvflip((1,0)) }))
+			board.valid_move(&Move::movement(Color::White, hvflip((1,1)), hvflip((1,0))))
 			.expect("DestNotInBounds not illegal"));
 
 		fn hflip(coord: Coord) -> Coord {
 			(BOARD_SIZE - coord.0 - 1, coord.1)
 		}
 		assert_eq!(IllegalMoveReason::DestNotEmpty,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: hflip((0,0)), pivot: hflip((3,0)) }))
+			board.valid_move(&Move::movement(Color::Black, hflip((0,0)), hflip((3,0))))
 			.expect("DestNotEmpty not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: hflip((0,0)), pivot: hflip((2,2)) }))
+			board.valid_move(&Move::movement(Color::Black, hflip((0,0)), hflip((2,2))))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::ActiveNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: hflip((2,2)), pivot: hflip((4,4)) }))
+			board.valid_move(&Move::movement(Color::Black, hflip((2,2)), hflip((4,4))))
 			.expect("ActiveNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: hflip((0,0)), pivot: hflip((3,3)) }))
+			board.valid_move(&Move::movement(Color::Black, hflip((0,0)), hflip((3,3))))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::DestNotInBounds,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: hflip((1,1)), pivot: hflip((1,0)) }))
+			board.valid_move(&Move::movement(Color::Black, hflip((1,1)), hflip((1,0))))
 			.expect("DestNotInBounds not illegal"));
 
 		fn vflip(coord: Coord) -> Coord {
 			(coord.0, BOARD_SIZE - coord.1 - 1)
 		}
 		assert_eq!(IllegalMoveReason::DestNotEmpty,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: vflip((0,0)), pivot: vflip((3,0)) }))
+			board.valid_move(&Move::movement(Color::Black, vflip((0,0)), vflip((3,0))))
 			.expect("DestNotEmpty not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: vflip((0,0)), pivot: vflip((2,2)) }))
+			board.valid_move(&Move::movement(Color::Black, vflip((0,0)), vflip((2,2))))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::ActiveNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: vflip((2,2)), pivot: vflip((4,4)) }))
+			board.valid_move(&Move::movement(Color::Black, vflip((2,2)), vflip((4,4))))
 			.expect("ActiveNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::PivotNotOwned,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: vflip((0,0)), pivot: vflip((3,3)) }))
+			board.valid_move(&Move::movement(Color::Black, vflip((0,0)), vflip((3,3))))
 			.expect("PivotNotOwned not illegal"));
 		assert_eq!(IllegalMoveReason::DestNotInBounds,
-			board.valid_move(Move::Movement(Movement { color: Color::Black, active: vflip((1,1)), pivot: vflip((1,0)) }))
+			board.valid_move(&Move::movement(Color::Black, vflip((1,1)), vflip((1,0))))
 			.expect("DestNotInBounds not illegal"));
 	}
 
 	#[test]
 	fn test_convertibles() {
-		let black = HashSet::from(vec![(3,3), (5,3), (5,5), (6,5)]);
+		let black = HashSet::from(vec![(3,3), (5,3), (7,5), (6,5)]);
 		let white = HashSet::from(vec![(4,4), (5,4), (4,5)]);
 		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
 		let expected = vec![(4,4), (5,4)];
-		let actual = board.convertible_around(Color::Black, (5,5));
+		let actual: Vec<_> = board.convertible_around(Color::Black, (7,5), (5,5)).collect();
 		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
 	}
 
 	#[test]
 	fn test_capturables() {
-		let black = HashSet::<Coord>::from(vec![(1,1), (1,2), (1,3), (2,1), (3,1), (3,3), (4,2), (4,3)]);
+		let black = HashSet::<Coord>::from(vec![(1,1), (1,2), (1,3), (2,1), (3,1), (3,4), (3,5), (4,2), (4,3)]);
 		let white = HashSet::<Coord>::from(vec![(2,2), (2,3), (3,2), (4,1)]);
 		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
 		let expected = vec![(2,2), (3,2)];
-		let actual = board.capturable_around(Color::Black, (3,3));
+		let actual: Vec<_> = board.capturable_around(Color::Black, (3,5), (3,3)).collect();
 		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
 	}
 
 	#[test]
 	fn test_capturables_on_board_edge() {
-		let black = HashSet::<Coord>::from(vec![(0,0), (0,1), (1,2)]);
+		let black = HashSet::<Coord>::from(vec![(0,0), (2,3), (1,2)]);
 		let white = HashSet::<Coord>::from(vec![(0,2), (0,3), (1,0), (1,1), (1,3), (2,0), (2,1)]);
 		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
 		let expected = vec![(0,2), (1,0)];
-		let actual = board.capturable_around(Color::Black, (0,1));
+		let actual: Vec<_> = board.capturable_around(Color::Black, (2,3), (0,1)).collect();
 		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
 	}
 
