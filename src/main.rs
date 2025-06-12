@@ -8,6 +8,5 @@ pub fn main() {
 	let mut board = Board::start_position(9, 2);
 	board.white.insert((2,2));
 	board.show_board();
-
-	println!("{:?}", PieceCountHeuristic{}.heuristic(&board));
+	playout(LegalMovesHeuristic{}, &board);
 }
