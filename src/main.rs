@@ -8,11 +8,7 @@ use board::Color::*;
 use board::Move::*;
 
 pub fn main() {
-	let heuristic = LinearCombinationHeuristic { terms: vec![
-		(1, Box::new(NthSmallestStringHeuristic{n: 0})),
-		(1, Box::new(ConnectedComponentsHeuristic{})),
-		(6, Box::new(CentroidDistanceHeuristic{power: 2.0}))
-	]};
+	let heuristic = LinearCombinationHeuristic { h1: NthSmallestStringHeuristic{n:0}, h2: ConnectedComponentsHeuristic{}, h3: CentroidDistanceHeuristic{power:2.0}};
 	let mut board = Board::start_position(9,2);
 	let moves = vec![Move::movement(White, (1,0), (2,1)),
 Movement { color: Black, active: (8, 0), pivot: (7, 2), conversions: vec![] },
@@ -65,7 +61,7 @@ Placement { color: White, at: (3,3) },
 		board = board.apply(&mov);
 	}
 	board.show_board();
-	let next_move = best_move(&board, 3, &heuristic).unwrap();
+	let next_move = best_move(&board, 3, heuristic.clone()).unwrap();
 	println!("{}", format!("{:?},", next_move).replace("[", "vec!["));
 	board.apply(&next_move).show_board();
 }
