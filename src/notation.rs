@@ -10,21 +10,54 @@ use nom::{
 	multi::many0,
 	sequence::{pair,preceded},
 };
-use std::str::FromStr;
 
-pub struct QuorumParseError {}
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+pub enum MoveType { Placement, Movement }
 
-impl FromStr for Coord {
-	type Err = QuorumParseError;
+#[derive(Debug, Clone)]
+pub struct MoveBuilder {
+	move_type: MoveType,
+	color: Option<Color>,
+	placement_at: Option<Coord>,
+	movement_active: Option<Coord>,
+	movement_pivot: Option<Coord>,
+	movement_conversions: Option<Vec<Coord>>
+}
 
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let chars: Vec<_> = s.chars().collect();
-		assert!(chars.len() >= 2);
-		let x = chars[0];
-		let y = chars[1];
-		println!("{x:?} AND {y:?}");
-		println!("{:?}", chars);
-		todo!()
+impl MoveBuilder {
+	fn new(move_type: MoveType) -> MoveBuilder {
+		MoveBuilder {
+			move_type,
+			color: None,
+			placement_at: None,
+			movement_active: None,
+			movement_pivot: None,
+			movement_conversions: None
+		}
+	}
+
+	fn placement(self) -> Move {
+		match self {
+			MoveBuilder { color: Some(color), placement_at: Some(at), .. } =>
+				Move::Placement { color, at },
+			_ => panic!("Error while parsing placement")
+		}
+	}
+
+	fn movement(self) -> Move {
+		match self {
+			MoveBuilder {
+				color: Some(color), movement_active: Some(active), movement_pivot: Some(pivot), movement_conversions: Some(conversions), .. } =>
+				Move::Movement { color, active, pivot, conversions },
+			_ => panic!("Error while parsing movement")
+		}
+	}
+
+	fn finish(self) -> Move {
+		match self.move_type {
+			MoveType::Placement => self.placement(),
+			MoveType::Movement => self.movement()
+		}
 	}
 }
 
@@ -38,15 +71,15 @@ pub fn parse_lines(i: &str) -> IResult<&str, Vec<(i32, Move, Move)>> {
 
 pub fn parse_line(i: &str) -> IResult<&str, (i32, Move, Move)> {
 	(preceded(multispace0,
-		parse_full_turn_number),
+		parse_full_move_number),
 	preceded((char('.'), multispace0,),
-		parse_white_turn),
+		parse_white_move),
 	preceded(multispace0,
-		parse_black_turn)
+		parse_black_move)
 	).parse(i)
 }
 
-pub fn parse_full_turn_number(i: &str) -> IResult<&str, i32> {
+pub fn parse_full_move_number(i: &str) -> IResult<&str, i32> {
 	map_res(
 		recognize((
 				one_of("123456789"),
@@ -56,22 +89,21 @@ pub fn parse_full_turn_number(i: &str) -> IResult<&str, i32> {
 	).parse(i)
 }
 
-pub fn parse_white_turn(i: &str) -> IResult<&str, Move> {
-	parse_turn(i)
-}
-
-pub fn parse_black_turn(i: &str) -> IResult<&str, Move> {
-	parse_turn.map(|turn| {
-		let mut cloned = turn.clone();
-		match &mut cloned {
-			Move::Movement { color, .. } => *color = Color::Black,
-			Move::Placement { color, .. } => *color = Color::Black
-		};
-		cloned
+pub fn parse_white_move(i: &str) -> IResult<&str, Move> {
+	parse_move_uncolored.map(|mut builder| {
+		builder.color = Some(Color::White);
+		builder.finish()
 	}).parse(i)
 }
 
-pub fn parse_turn(i: &str) -> IResult<&str, Move> {
+pub fn parse_black_move(i: &str) -> IResult<&str, Move> {
+	parse_move_uncolored.map(|mut builder| {
+		builder.color = Some(Color::Black);
+		builder.finish()
+	}).parse(i)
+}
+
+pub fn parse_move_uncolored(i: &str) -> IResult<&str, MoveBuilder> {
 	alt((parse_movement, parse_placement)).parse(i)
 }
 
@@ -85,21 +117,26 @@ fn calculate_pivot(active: Coord, dest: Coord) -> Option<Coord> {
 	}
 }
 
-pub fn parse_movement(i: &str) -> IResult<&str, Move> {
+pub fn parse_movement(i: &str) -> IResult<&str, MoveBuilder> {
 	(parse_active, parse_dest, preceded(opt(char('*')), parse_conversions))
-		.map(|(active, dest, conversions): (Coord, Coord, Vec<Coord>)|
-			Move::Movement {
-				active, conversions, color: Color::White,
-				pivot: calculate_pivot(active, dest)
-					.expect(format!("{:?} cannot move to {:?} because the pivot would not align to the grid", active, dest)
-						.as_str())
-			}).parse(i)
+		.map(|(active, dest, conversions): (Coord, Coord, Vec<Coord>)| {
+			let mut builder = MoveBuilder::new(MoveType::Movement);
+			builder.movement_active = Some(active);
+			builder.movement_conversions = Some(conversions);
+			builder.movement_pivot = Some(calculate_pivot(active, dest)
+				.expect(format!("{:?} cannot move to {:?} because the pivot would not align to the grid", active, dest)
+					.as_str()));
+			builder
+		}).parse(i)
 }
 
-pub fn parse_placement(i: &str) -> IResult<&str, Move> {
+pub fn parse_placement(i: &str) -> IResult<&str, MoveBuilder> {
 	preceded(tag("->"), parse_coord)
-		.map(|at| Move::Placement { color: Color::White, at })
-		.parse(i)
+		.map(|at| {
+			let mut builder = MoveBuilder::new(MoveType::Placement);
+			builder.placement_at = Some(at);
+			builder
+		}).parse(i)
 }
 
 pub fn parse_active(i: &str) -> IResult<&str, Coord> {
