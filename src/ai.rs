@@ -1,5 +1,6 @@
 use crate::board::*;
 use std::collections::BinaryHeap;
+use std::cmp;
 
 type Valuation = i32;
 
@@ -7,7 +8,7 @@ pub trait Heuristic {
 	fn heuristic(&self, board: &Board) -> Valuation;
 }
 
-pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Valuation {
+pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mut alpha: Valuation, mut beta: Valuation) -> Valuation {
 	if depth == 0 {
 		return heuristic.heuristic(&board)
 	} else if let Some(Color::White) = board.winner() {
@@ -17,18 +18,31 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) ->
 	}
 	match board.whose_move {
 		Color::White => {
-			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).max().unwrap_or(Valuation::MIN)
+			let mut value = Valuation::MIN;
+			for mov in board.moves() {
+				value = cmp::max(value, minimax_eval(&board.apply(&mov), depth-1, heuristic, alpha, beta));
+				if value >= beta { break; }
+				alpha = cmp::max(alpha, value)
+			}
+			value
 		},
+
 		Color::Black => {
-			board.moves().map(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)).min().unwrap_or(Valuation::MAX)
+			let mut value = Valuation::MAX;
+			for mov in board.moves() {
+				value = cmp::min(value, minimax_eval(&board.apply(&mov), depth-1, heuristic, alpha, beta));
+				if value <= alpha { break; }
+				beta = cmp::min(beta, value)
+			}
+			value
 		}
 	}
 }
 
 pub fn best_move<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Option<Move> {
 	match board.whose_move {
-		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic)),
-		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic))
+		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX)),
+		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX))
 	}
 }
 
@@ -54,21 +68,21 @@ pub struct CentroidDistanceHeuristic { pub power: f32 }
 
 impl Heuristic for CentroidDistanceHeuristic {
 	fn heuristic(&self, board: &Board) -> Valuation {
-		let white_centroid = board.white.iter().cloned().map(|(x,y)|
+		let white_centroid = board.white.iter().cloned().map(|Coord(x,y)|
 			(x as f32 / board.white.len() as f32,
 			 y as f32 / board.white.len() as f32)
 		).reduce(|(ax, ay), (bx, by)| (ax + bx, ay + by)).unwrap_or((0.0, 0.0));
-		let black_centroid = board.black.iter().cloned().map(|(x,y)|
+		let black_centroid = board.black.iter().cloned().map(|Coord(x,y)|
 			(x as f32 / board.black.len() as f32,
 			 y as f32 / board.black.len() as f32)
 		).reduce(|(ax, ay), (bx, by)| (ax + bx, ay + by)).unwrap_or((0.0, 0.0));
 
 		let white_cum_distance: f32 = board.white.iter().cloned().map(
-			|(x, y)| ((x as f32 - white_centroid.0).abs() + (y as f32 - white_centroid.1).abs()).powf(self.power)
+			|Coord(x, y)| ((x as f32 - white_centroid.0).abs() + (y as f32 - white_centroid.1).abs()).powf(self.power)
 		).sum();
 
 		let black_cum_distance: f32 = board.black.iter().cloned().map(
-			|(x, y)| ((x as f32 - black_centroid.0).abs() + (y as f32 - black_centroid.1).abs()).powf(self.power)
+			|Coord(x, y)| ((x as f32 - black_centroid.0).abs() + (y as f32 - black_centroid.1).abs()).powf(self.power)
 		).sum();
 
 		((black_cum_distance - white_cum_distance) * 1000.0) as Valuation

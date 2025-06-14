@@ -19,5 +19,11 @@ pub fn main() {
 		"1-0\n"
 	);
 
-	print!("{:?}", parse_lines(pgn_example));
+	let capture_and_convert_example = "3五3一*3二";
+
+	let illegal_move_example = "3一4一";
+
+	println!("{:?}", parse_lines(pgn_example));
+	println!("{:?}", parse_white_move(capture_and_convert_example));
+	println!("{:?}", parse_white_move(illegal_move_example));
 }
