@@ -2,9 +2,8 @@ use im::HashSet;
 use std::cmp;
 use itertools::Itertools;
 
-type Coord = (i32, i32);
-
-const TOTAL_PIECES_PER_COLOR: i32 = 20;
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct Coord(pub i32, pub i32);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Color { Black, White }
@@ -30,7 +29,7 @@ impl Move {
 			Move::Movement { active, pivot, .. } => {
 				let dx = pivot.0 - active.0;
 				let dy = pivot.1 - active.1;
-				(pivot.0 + dx, pivot.1 + dy)
+				Coord(pivot.0 + dx, pivot.1 + dy)
 			},
 			Move::Placement { at, .. } => at.clone()
 		}
@@ -56,22 +55,37 @@ pub enum IllegalMoveReason {
 	ActiveNotOwned, PivotNotOwned, DestNotEmpty, DestNotInBounds, GapTooBig, EmptyReserve
 }
 
+
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Board {
 	pub board_size: i32,
 	pub max_gap: i32,
 	pub white: HashSet<Coord>,
 	pub black: HashSet<Coord>,
+	pub white_reserve: i32,
+	pub black_reserve: i32,
 	pub whose_move: Color
 }
 
 impl Board {
+	pub fn from_position(board_size: i32, whose_move: Color, white: HashSet<Coord>, black: HashSet<Coord>) -> Board {
+		let white_illegals: Vec<_> = white.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
+		if white_illegals.len() > 0 {
+			panic!("White pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", white);
+		}
+		let black_illegals: Vec<_> = black.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
+		if black_illegals.len() > 0 {
+			panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black);
+		}
+		Board { board_size, whose_move, white, black, white_reserve: 0, black_reserve: 0, max_gap: 2 }
+	}
+
 	pub fn all_pieces(&self) -> HashSet<Coord> {
 		&self.white + &self.black
 	}
 
 	pub fn all_coords<'a>(&'a self) -> impl Iterator<Item=Coord> + 'a {
-		(0..self.board_size).into_iter().flat_map(|x| (0..self.board_size).into_iter().map(move |y| (x,y)))
+		(0..self.board_size).into_iter().flat_map(|x| (0..self.board_size).into_iter().map(move |y| Coord(x,y)))
 	}
 
 	pub fn in_bounds(&self, coord: Coord) -> bool {
@@ -79,7 +93,7 @@ impl Board {
 		0 <= coord.1 && coord.1 < self.board_size
 	}
 
-	pub fn start_position(board_size: i32, max_gap: i32) -> Board {
+	pub fn start_position(board_size: i32) -> Board {
 		assert!(board_size >= 8);
 
 		let mut black = HashSet::new();
@@ -87,25 +101,25 @@ impl Board {
 		for x in 0..board_size {
 			for y in 0..board_size {
 				if x + y < 4 || x + y > 2*board_size - 6 {
-					white.insert((x,y));
+					white.insert(Coord(x,y));
 				}
 				else if board_size - x + y < 5 || board_size - x + y > 2*board_size - 5 {
-					black.insert((x,y));
+					black.insert(Coord(x,y));
 				}
 			}
 		}
 
-		Board { board_size, max_gap, white, black, whose_move: Color::White }
+		Board::from_position(board_size, Color::White, white, black)
 	}
 
 	pub fn show_board(&self) {
 		for y in (0..self.board_size).rev() {
 			for x in 0..self.board_size {
-				if self.white.contains(&(x,y)) && self.black.contains(&(x,y)) {
+				if self.white.contains(&Coord(x,y)) && self.black.contains(&Coord(x,y)) {
 					print!("☯");
-				} else if self.white.contains(&(x,y)) {
+				} else if self.white.contains(&Coord(x,y)) {
 					print!("●");
-				} else if self.black.contains(&(x,y)) {
+				} else if self.black.contains(&Coord(x,y)) {
 					print!("○");
 				} else if ((x as f32) + 0.5 - ((self.board_size as f32) / 2.0)).abs() < 1.0
 				           && ((y as f32) + 0.5 - ((self.board_size as f32) / 2.0)).abs() < 1.0 {
@@ -168,7 +182,17 @@ impl Board {
 	}
 
 	pub fn reserve_of(&self, color: Color) -> i32 {
-		TOTAL_PIECES_PER_COLOR - (self.pieces_of(color).len() as i32)
+		match color {
+			Color::White => self.white_reserve,
+			Color::Black => self.black_reserve
+		}
+	}
+
+	pub fn reserve_of_mut(&mut self, color: Color) -> &mut i32 {
+		match color {
+			Color::White => &mut self.white_reserve,
+			Color::Black => &mut self.black_reserve
+		}
 	}
 
 	pub fn insert_for(&self, color: Color, coord: Coord) -> Option<Coord> {
@@ -186,12 +210,12 @@ impl Board {
 	}
 
 	pub fn neighborhood(&self, coord: Coord) -> Vec<Coord> {
-		let (x, y) = coord;
+		let Coord(x, y) = coord;
 		let mut neighbors = vec![];
 		for dx in -1..=1 {
 			for dy in -1..=1 {
 				if dx == 0 && dy == 0 { continue; }
-				let position = (x+dx, y+dy);
+				let position = Coord(x+dx, y+dy);
 				if !self.in_bounds(position) {
 					continue;
 				}
@@ -202,8 +226,8 @@ impl Board {
 	}
 
 	pub fn orthogonal_neighborhood(&self, coord: Coord) -> Vec<Coord> {
-		let (x,y) = coord;
-		vec![(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+		let Coord(x,y) = coord;
+		vec![Coord(x+1, y), Coord(x-1, y), Coord(x, y+1), Coord(x, y-1)]
 	}
 
 	pub fn flood_fill(&self, color: Color, source: Coord) -> HashSet<Coord> {
@@ -246,7 +270,7 @@ impl Board {
 		self.neighborhood(dest).into_iter().filter(move |neighbor| {
 			let flanker_x = (neighbor.0 - dest.0) * 2 + dest.0;
 			let flanker_y = (neighbor.1 - dest.1) * 2 + dest.1;
-			let flanker = (flanker_x, flanker_y);
+			let flanker = Coord(flanker_x, flanker_y);
 
 			flanker != active
 				&& self.pieces_of(color.opponent()).contains(&neighbor)
@@ -262,8 +286,8 @@ impl Board {
 			for pivot in self.pieces_of(color).iter().cloned() {
 				if self.valid_move(&Move::movement(color, active, pivot)).is_none() {
 					if self.reserve_of(color) < 0 {
-						panic!("Negative reserve for {:?}: {:?} - {:?} = {:?}",
-							color, TOTAL_PIECES_PER_COLOR, self.pieces_of(color).len(), self.reserve_of(color));
+						panic!("Negative reserve for {:?}: {} on board with {} in reserve",
+							color, self.pieces_of(color).len(), self.reserve_of(color));
 					}
 					let base_mvmt = Move::movement(color, active, pivot);
 					let conversions: Vec<_> = self.convertible_around(color, active, base_mvmt.dest())
@@ -303,16 +327,20 @@ impl Board {
 
 				for opp_coord in self.capturable_around(*color, *active, dest) {
 					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
+					*new_board.reserve_of_mut(color.opponent()) += 1;
 				}
 				for opp_coord in self.convertible_around(*color, *active, dest) {
 					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
+					*new_board.reserve_of_mut(color.opponent()) += 1;
 					if conversions.contains(&opp_coord) {
 						new_board.pieces_of_mut(*color).insert(opp_coord);
+						*new_board.reserve_of_mut(*color) -= 1;
 					}
 				}
 			},
 			Move::Placement { color, at } => {
 				new_board.pieces_of_mut(*color).insert(*at);
+				*new_board.reserve_of_mut(*color) -= 1;
 			}
 		}
 		new_board.whose_move = new_board.whose_move.opponent();
@@ -327,7 +355,7 @@ mod tests {
 	#[test]
 	fn test_valid_move() {
 		const BOARD_SIZE: i32 = 9;
-		let mut board = Board::start_position(BOARD_SIZE, 2);
+		let mut board = Board::start_position(BOARD_SIZE);
 		board.white.insert((4,3));
 
 		assert_eq!(None, board.valid_move(&Move::movement(Color::White, (0,0), (1,1))));
@@ -413,7 +441,7 @@ mod tests {
 	fn test_convertibles() {
 		let black = HashSet::from(vec![(3,3), (5,3), (7,5), (6,5)]);
 		let white = HashSet::from(vec![(4,4), (5,4), (4,5)]);
-		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
+		let board = Board::from_position(9, Color::White, white, black);
 		let expected = vec![(4,4), (5,4)];
 		let actual: Vec<_> = board.convertible_around(Color::Black, (7,5), (5,5)).collect();
 		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
@@ -423,7 +451,7 @@ mod tests {
 	fn test_capturables() {
 		let black = HashSet::<Coord>::from(vec![(1,1), (1,2), (1,3), (2,1), (3,1), (3,4), (3,5), (4,2), (4,3)]);
 		let white = HashSet::<Coord>::from(vec![(2,2), (2,3), (3,2), (4,1)]);
-		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
+		let board = Board::from_position(9, Color::White, white, black);
 		let expected = vec![(2,2), (3,2)];
 		let actual: Vec<_> = board.capturable_around(Color::Black, (3,5), (3,3)).collect();
 		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
@@ -433,7 +461,7 @@ mod tests {
 	fn test_capturables_on_board_edge() {
 		let black = HashSet::<Coord>::from(vec![(0,0), (2,3), (1,2)]);
 		let white = HashSet::<Coord>::from(vec![(0,2), (0,3), (1,0), (1,1), (1,3), (2,0), (2,1)]);
-		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
+		let board = Board::from_position(9, Color::White, white, black);
 		let expected = vec![(0,2), (1,0)];
 		let actual: Vec<_> = board.capturable_around(Color::Black, (2,3), (0,1)).collect();
 		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
@@ -443,14 +471,14 @@ mod tests {
 	fn test_flood_fill() {
 		let black = HashSet::<Coord>::from(vec![(1,2), (1,3), (2,1), (2,3), (3,1)]);
 		let white = HashSet::<Coord>::from(vec![(2,2), (3,2), (3,3), (4,3)]);
-		let board = Board { board_size: 9, max_gap: 2, white, black, whose_move: Color::White };
+		let board = Board::from_position(9, Color::White, white, black);
 		assert!(!board.color_connected(Color::Black));
 		assert!(board.color_connected(Color::White));
 	}
 
 	#[test]
 	fn test_available_moves_from_start() {
-		let board = Board::start_position(9, 2);
+		let board = Board::start_position(9);
 
 		let mut white_moves: Vec<_> = board.moves_of(Color::White).collect();
 		let mut black_moves: Vec<_> = board.moves_of(Color::Black).collect();
@@ -470,9 +498,11 @@ mod tests {
 
 	#[test]
 	fn test_available_moves_with_placement() {
-		let mut board = Board::start_position(9, 2);
+		let mut board = Board::start_position(9);
 		board.white.remove(&(3,0));
 		board.black.remove(&(5,0));
+		board.white_reserve += 1;
+		board.black_reserve += 1;
 
 		let mut white_moves: Vec<_> = board.moves_of(Color::White).collect();
 		let mut black_moves: Vec<_> = board.moves_of(Color::Black).collect();
@@ -488,5 +518,13 @@ mod tests {
 
 		assert_eq!(17 + 18 + 43, white_moves.len());
 		assert_eq!(17 + 18 + 43, black_moves.len());
+	}
+
+	#[test]
+	#[should_panic]
+	fn from_position_out_of_bounds_panic() {
+		let mut white = HashSet::new();
+		white.insert((10,1));
+		Board::from_position(9, Color::White, white, HashSet::new());
 	}
 }
