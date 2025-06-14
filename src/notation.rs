@@ -158,10 +158,7 @@ pub fn parse_coord(i: &str) -> IResult<&str, Coord> {
 const CJK_NUMERALS: [char; 9] = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
 pub fn parse_file(i: &str) -> IResult<&str, i32> {
-	map_res(recognize(
-			one_of("123456789")),
-			|res: &str| res.parse()
-	).parse(i)
+	one_of("123456789").map_res(|c: char| c.to_string().parse()).parse(i)
 }
 
 pub fn parse_rank(i: &str) -> IResult<&str, i32> {
@@ -172,9 +169,7 @@ pub fn parse_rank(i: &str) -> IResult<&str, i32> {
 }
 
 pub fn game_result(i: &str) -> IResult<&str, &str> {
-	recognize(
-		alt((tag("1-0"), tag("0-1")))
-	).parse(i)
+	alt((tag("1-0"), tag("0-1"))).parse(i)
 }
 
 #[cfg(test)]
