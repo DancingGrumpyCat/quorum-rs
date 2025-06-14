@@ -50,6 +50,42 @@ impl Move {
 	}
 }
 
+pub struct MoveDelta {
+	pub white_minus: Vec<Coord>,
+	pub white_plus:  Vec<Coord>,
+	pub black_minus: Vec<Coord>,
+	pub black_plus:  Vec<Coord>,
+	pub white_reserve: i32,
+	pub black_reserve: i32
+}
+
+impl MoveDelta {
+	fn new() -> MoveDelta {
+		MoveDelta { white_minus: vec![], white_plus: vec![], black_minus: vec![], black_plus: vec![], white_reserve: 0, black_reserve: 0 }
+	}
+
+	fn plus_of_mut(&mut self, color: Color) -> &mut Vec<Coord> {
+		match color {
+			Color::White => &mut self.white_plus,
+			Color::Black => &mut self.black_plus
+		}
+	}
+
+	fn minus_of_mut(&mut self, color: Color) -> &mut Vec<Coord> {
+		match color {
+			Color::White => &mut self.white_minus,
+			Color::Black => &mut self.black_minus
+		}
+	}
+
+	fn reserve_of_mut(&mut self, color: Color) -> &mut i32 {
+		match color {
+			Color::White => &mut self.white_reserve,
+			Color::Black => &mut self.black_reserve
+		}
+	}
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum IllegalMoveReason {
 	ActiveNotOwned, PivotNotOwned, DestNotEmpty, DestNotInBounds, GapTooBig, EmptyReserve
@@ -64,7 +100,8 @@ pub struct Board {
 	pub black: HashSet<Coord>,
 	pub white_reserve: i32,
 	pub black_reserve: i32,
-	pub whose_move: Color
+	pub whose_move: Color,
+	pub zobrist_hash: u64
 }
 
 impl Board {
@@ -77,7 +114,7 @@ impl Board {
 		if black_illegals.len() > 0 {
 			panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black);
 		}
-		Board { board_size, whose_move, white, black, white_reserve: 0, black_reserve: 0, max_gap: 2 }
+		Board { board_size, whose_move, white, black, white_reserve: 0, black_reserve: 0, max_gap: 2, zobrist_hash: 0 }
 	}
 
 	pub fn all_pieces(&self) -> HashSet<Coord> {
@@ -316,33 +353,62 @@ impl Board {
 		self.moves_of(self.whose_move)
 	}
 
-	pub fn apply(&self, mov: &Move) -> Board {
-		assert_eq!(None, self.valid_move(&mov));
-		let mut new_board = self.clone();
+	pub fn move_delta (&self, mov: &Move) -> MoveDelta {
+		let mut this_move_delta = MoveDelta::new();
 		match mov {
 			Move::Movement { color, active, conversions, .. } => {
 				let dest = mov.dest();
-				new_board.pieces_of_mut(*color).insert(dest);
-				new_board.pieces_of_mut(*color).remove(&active);
+				this_move_delta.plus_of_mut(*color).push(dest);
+				this_move_delta.minus_of_mut(*color).push(*active);
 
 				for opp_coord in self.capturable_around(*color, *active, dest) {
-					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
-					*new_board.reserve_of_mut(color.opponent()) += 1;
+					this_move_delta.minus_of_mut(color.opponent()).push(opp_coord);
+					*this_move_delta.reserve_of_mut(color.opponent()) += 1;
 				}
 				for opp_coord in self.convertible_around(*color, *active, dest) {
-					new_board.pieces_of_mut(color.opponent()).remove(&opp_coord);
-					*new_board.reserve_of_mut(color.opponent()) += 1;
+					this_move_delta.minus_of_mut(color.opponent()).push(opp_coord);
+					*this_move_delta.reserve_of_mut(color.opponent()) += 1;
 					if conversions.contains(&opp_coord) {
-						new_board.pieces_of_mut(*color).insert(opp_coord);
-						*new_board.reserve_of_mut(*color) -= 1;
+						this_move_delta.plus_of_mut(*color).push(opp_coord);
+						*this_move_delta.reserve_of_mut(*color) -= 1;
 					}
 				}
 			},
 			Move::Placement { color, at } => {
-				new_board.pieces_of_mut(*color).insert(*at);
-				*new_board.reserve_of_mut(*color) -= 1;
+				this_move_delta.plus_of_mut(*color).push(*at);
+				*this_move_delta.reserve_of_mut(*color) -= 1;
 			}
 		}
+		this_move_delta
+	}
+
+	pub fn apply_to_zobrist_hash<F,G,H>(&self, delta: &MoveDelta, piece_hash: F, reserve_hash: G, turn_hash: H) -> u64
+		where F: Fn(Color, Coord) -> u64, G: Fn(Color, i32) -> u64, H: Fn(Color) -> u64 {
+			let mut new_hash = self.zobrist_hash;
+			for coord in &delta.white_plus  { new_hash ^= piece_hash(Color::White, *coord) }
+			for coord in &delta.white_minus { new_hash ^= piece_hash(Color::White, *coord) }
+			for coord in &delta.black_plus  { new_hash ^= piece_hash(Color::Black, *coord) }
+			for coord in &delta.black_minus { new_hash ^= piece_hash(Color::Black, *coord) }
+			new_hash ^= reserve_hash(Color::White, self.white_reserve);
+			new_hash ^= reserve_hash(Color::White, self.white_reserve + delta.white_reserve);
+			new_hash ^= reserve_hash(Color::Black, self.black_reserve);
+			new_hash ^= reserve_hash(Color::Black, self.black_reserve + delta.black_reserve);
+			new_hash ^= turn_hash(self.whose_move) ^ turn_hash(self.whose_move.opponent());
+			new_hash
+	}
+
+	pub fn apply(&self, mov: &Move) -> Board {
+		assert_eq!(None, self.valid_move(&mov));
+		let mut new_board = self.clone();
+		let delta = self.move_delta(&mov);
+		new_board.zobrist_hash = self.apply_to_zobrist_hash(&delta, |_,_| 1u64, |_,_| 1u64, |_| 1u64);
+		for coord in delta.white_minus { new_board.white.remove(&coord); }
+		for coord in delta.white_plus { new_board.white.insert(coord); }
+		for coord in delta.black_minus { new_board.black.remove(&coord); }
+		for coord in delta.black_plus { new_board.black.insert(coord); }
+		new_board.white_reserve += delta.white_reserve;
+		new_board.black_reserve += delta.black_reserve;
+
 		new_board.whose_move = new_board.whose_move.opponent();
 		new_board
 	}
