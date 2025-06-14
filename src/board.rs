@@ -92,7 +92,7 @@ pub enum IllegalMoveReason {
 }
 
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Eq, Debug, Hash)]
 pub struct Board {
 	pub board_size: i32,
 	pub max_gap: i32,
@@ -102,6 +102,17 @@ pub struct Board {
 	pub black_reserve: i32,
 	pub whose_move: Color,
 	pub zobrist_hash: u64
+}
+
+impl PartialEq for Board {
+	fn eq(&self, other: &Self) -> bool {
+		self.board_size == other.board_size
+			&& self.max_gap == other.max_gap
+			&& self.white == other.white
+			&& self.black == other.black
+			&& self.white_reserve == other.white_reserve
+			&& self.black_reserve == other.black_reserve
+	}
 }
 
 impl Board {

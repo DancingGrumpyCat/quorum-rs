@@ -181,7 +181,7 @@ mod tests {
 	fn illegal_pivot_point () {
 		let illegal_move_example = "3一4一";
 		// Should either panic during evaluation or return None
-		assert!(parse_white_move(illegal_move_example).is_none());
+		assert!(parse_white_move(illegal_move_example).is_err());
 	}
 
 	#[test]
