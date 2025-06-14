@@ -176,3 +176,31 @@ pub fn game_result(i: &str) -> IResult<&str, &str> {
 		alt((tag("1-0"), tag("0-1")))
 	).parse(i)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	#[should_panic]
+	fn illegal_pivot_point () {
+		let illegal_move_example = "3一4一";
+		parse_white_move(illegal_move_example);
+	}
+
+	#[test]
+	fn example_game_1() {
+		let pgn_example = concat!(
+			"1. 1一5五 1九3五\n",
+			"2. 1二3四 2九2五\n",
+			"3. 3二3六* 3九3七\n",
+			"4. 1四5八 2八4八\n",
+			"5. 1三5九 9一7五\n",
+			"1-0\n"
+		);
+		let capture_and_convert_example = "3五3一*3二";
+		println!("{:?}", parse_lines(pgn_example));
+		println!("{:?}", parse_white_move(capture_and_convert_example));
+		todo!();
+	}
+}
