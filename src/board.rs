@@ -372,6 +372,7 @@ impl Board {
 				this_move_delta.plus_of_mut(*color).push(dest);
 				this_move_delta.minus_of_mut(*color).push(*active);
 
+				// TODO bug, adds twice to reserve if both convertible and capturable
 				for opp_coord in self.capturable_around(*color, *active, dest) {
 					this_move_delta.minus_of_mut(color.opponent()).push(opp_coord);
 					*this_move_delta.reserve_of_mut(color.opponent()) += 1;

@@ -158,12 +158,17 @@ pub fn parse_coord(i: &str) -> IResult<&str, Coord> {
 const CJK_NUMERALS: [char; 9] = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
 pub fn parse_file(i: &str) -> IResult<&str, i32> {
-	one_of("123456789").map_res(|c: char| c.to_string().parse()).parse(i)
+	// Unlike human notation, computer starts at (0,0) not (1,1)
+	one_of("123456789")
+		.map_res(|c: char| c.to_string().parse())
+		.map(|file: i32| file-1)
+		.parse(i)
 }
 
 pub fn parse_rank(i: &str) -> IResult<&str, i32> {
 	one_of("一二三四五六七八九").map(|res: char|
-		(1 + CJK_NUMERALS.iter().position(|&numeral| numeral == res).unwrap())
+		// Unlike human notation, computer starts at (0,0) not (1,1)
+		CJK_NUMERALS.iter().position(|&numeral| numeral == res).unwrap()
 		as i32
 	).parse(i)
 }
@@ -187,16 +192,45 @@ mod tests {
 	#[test]
 	fn example_game_1() {
 		let pgn_example = concat!(
-			"1. 1一5五 1九3五\n",
+			"1. 1一5三 1九3五\n",
 			"2. 1二3四 2九2五\n",
 			"3. 3二3六* 3九3七\n",
 			"4. 1四5八 2八4八\n",
 			"5. 1三5九 9一7五\n",
-			"1-0\n"
+			"6. 9九7七 9四5六\n",
+			"7. 3六3二 9二7四\n",
+			"8. 4一6五 9三5五*6五\n",
+			"9. 8八6六 ->4六\n",
+			"10. 7八7六 7四3六\n",
+			"11. 3一3三 5六5四\n",
+			"12. 9六5六 8一6三\n",
+			"13. 3二7四*7五 8三4三\n",
+			"14. 7九3九* 8二6二\n",
+			"15. ->4五 ->3五\n",
+			"16. 8七2五* 4八4四*4五\n",
+			"0-1"
 		);
-		let capture_and_convert_example = "3五3一*3二";
-		println!("{:?}", parse_lines(pgn_example));
-		println!("{:?}", parse_white_move(capture_and_convert_example));
+		let moves = parse_lines(pgn_example).unwrap().1;
+
+		let mut board = Board::start_position(9);
+		board.show_board();
+		for (turn_num, white_move, black_move) in moves {
+			println!("{turn_num}, white reserve {}, black reserve {}", board.white_reserve, board.black_reserve);
+			board = board.apply(&white_move);
+			println!("{white_move:?}");
+			board.show_board();
+			board = board.apply(&black_move);
+			println!("{turn_num}, white reserve {}, black reserve {}", board.white_reserve, board.black_reserve);
+			println!("...{black_move:?}");
+			board.show_board();
+		}
+
+		// let board = moves.into_iter()
+		// 	.flat_map(|(_turn_num, white_move, black_move)| vec![white_move, black_move])
+		// 	.inspect(|mov| println!("{mov:?}"))
+		// 	.fold(Board::start_position(9), |board, mov| board.apply(&mov));
+		println!("{board:?}");
+		board.show_board();
 		todo!();
 	}
 }
