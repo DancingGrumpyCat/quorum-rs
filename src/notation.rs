@@ -216,12 +216,12 @@ mod tests {
 		board.show_board();
 		for (turn_num, white_move, black_move) in moves {
 			println!("{turn_num}, white reserve {}, black reserve {}", board.white_reserve, board.black_reserve);
-			board = board.apply(&white_move);
 			println!("{white_move:?}");
+			board = board.apply(&white_move);
 			board.show_board();
-			board = board.apply(&black_move);
 			println!("{turn_num}, white reserve {}, black reserve {}", board.white_reserve, board.black_reserve);
 			println!("...{black_move:?}");
+			board = board.apply(&black_move);
 			board.show_board();
 		}
 
