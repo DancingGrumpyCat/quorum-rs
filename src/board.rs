@@ -88,7 +88,7 @@ impl MoveDelta {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum IllegalMoveReason {
-	ActiveNotOwned, PivotNotOwned, DestNotEmpty, DestNotInBounds, GapTooBig, EmptyReserve
+	ActiveNotOwned, PivotNotOwned, DestNotEmpty, DestNotInBounds, GapTooBig, EmptyReserve, TriedConvertCapture
 }
 
 
@@ -183,7 +183,7 @@ impl Board {
 
 	pub fn valid_move(&self, mov: &Move) -> Option<IllegalMoveReason> {
 		match mov {
-			Move::Movement { color, active, pivot, .. } => {
+			Move::Movement { color, active, pivot, conversions } => {
 				let pieces = if *color == Color::Black { &self.black } else { &self.white };
 				if !pieces.contains(&active) {
 					return Some(IllegalMoveReason::ActiveNotOwned);
@@ -200,6 +200,11 @@ impl Board {
 				}
 				if mov.gap() > self.max_gap {
 					return Some(IllegalMoveReason::GapTooBig);
+				}
+				if conversions.iter().cloned()
+					.any(|converted| self.capturable_around(*color, *active, dest)
+						.any(|captured| captured == converted)) {
+					return Some(IllegalMoveReason::TriedConvertCapture)
 				}
 				None
 			},
