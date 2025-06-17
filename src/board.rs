@@ -382,24 +382,20 @@ impl Board {
 					if !convertibles.contains(&opp_coord) {
 						this_move_delta.minus_of_mut(color.opponent()).push(opp_coord);
 						*this_move_delta.reserve_of_mut(color.opponent()) += 1;
-						println!("Adding 1 to {:?} due to capture at {opp_coord:?}", color.opponent());
 					}
 				}
 				for opp_coord in convertibles {
 					this_move_delta.minus_of_mut(color.opponent()).push(opp_coord);
 					*this_move_delta.reserve_of_mut(color.opponent()) += 1;
-					println!("Adding 1 to {:?} due to conversion at {opp_coord:?}", color.opponent());
 					if conversions.contains(&opp_coord) {
 						this_move_delta.plus_of_mut(*color).push(opp_coord);
 						*this_move_delta.reserve_of_mut(*color) -= 1;
-						println!("Subtracting 1 from {color:?} due to conversion at {opp_coord:?}");
 					}
 				}
 			},
 			Move::Placement { color, at } => {
 				this_move_delta.plus_of_mut(*color).push(*at);
 				*this_move_delta.reserve_of_mut(*color) -= 1;
-				println!("Subtracting 1 from {color:?} due to placement")
 			}
 		}
 		this_move_delta
