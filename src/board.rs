@@ -2,6 +2,8 @@ use im::HashSet;
 use itertools::Itertools;
 use std::cmp;
 
+use crate::hashes::*;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Coord(pub i32, pub i32);
 
@@ -401,26 +403,25 @@ impl Board {
 		this_move_delta
 	}
 
-	pub fn apply_to_zobrist_hash<F,G,H>(&self, delta: &MoveDelta, piece_hash: F, reserve_hash: G, turn_hash: H) -> u64
-		where F: Fn(Color, Coord) -> u64, G: Fn(Color, i32) -> u64, H: Fn(Color) -> u64 {
-			let mut new_hash = self.zobrist_hash;
-			for coord in &delta.white_plus  { new_hash ^= piece_hash(Color::White, *coord) }
-			for coord in &delta.white_minus { new_hash ^= piece_hash(Color::White, *coord) }
-			for coord in &delta.black_plus  { new_hash ^= piece_hash(Color::Black, *coord) }
-			for coord in &delta.black_minus { new_hash ^= piece_hash(Color::Black, *coord) }
-			new_hash ^= reserve_hash(Color::White, self.white_reserve);
-			new_hash ^= reserve_hash(Color::White, self.white_reserve + delta.white_reserve);
-			new_hash ^= reserve_hash(Color::Black, self.black_reserve);
-			new_hash ^= reserve_hash(Color::Black, self.black_reserve + delta.black_reserve);
-			new_hash ^= turn_hash(self.whose_move) ^ turn_hash(self.whose_move.opponent());
-			new_hash
+	pub fn apply_to_zobrist_hash(&self, delta: &MoveDelta) -> u64 {
+		let mut new_hash = self.zobrist_hash;
+		for coord in &delta.white_plus  { new_hash ^= piece_hash(Color::White, *coord) }
+		for coord in &delta.white_minus { new_hash ^= piece_hash(Color::White, *coord) }
+		for coord in &delta.black_plus  { new_hash ^= piece_hash(Color::Black, *coord) }
+		for coord in &delta.black_minus { new_hash ^= piece_hash(Color::Black, *coord) }
+		new_hash ^= reserve_hash(Color::White, self.white_reserve);
+		new_hash ^= reserve_hash(Color::White, self.white_reserve + delta.white_reserve);
+		new_hash ^= reserve_hash(Color::Black, self.black_reserve);
+		new_hash ^= reserve_hash(Color::Black, self.black_reserve + delta.black_reserve);
+		new_hash ^= turn_hash(self.whose_move) ^ turn_hash(self.whose_move.opponent());
+		new_hash
 	}
 
 	pub fn apply(&self, mov: &Move) -> Board {
 		assert_eq!(None, self.valid_move(&mov));
 		let mut new_board = self.clone();
 		let delta = self.move_delta(&mov);
-		new_board.zobrist_hash = self.apply_to_zobrist_hash(&delta, |_,_| 1u64, |_,_| 1u64, |_| 1u64);
+		new_board.zobrist_hash = self.apply_to_zobrist_hash(&delta);
 		for coord in delta.white_minus { new_board.white.remove(&coord); }
 		for coord in delta.white_plus { new_board.white.insert(coord); }
 		for coord in delta.black_minus { new_board.black.remove(&coord); }
