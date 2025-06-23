@@ -1,4 +1,5 @@
 use crate::board::*;
+use im::HashSet;
 
 use nom::{
 	IResult,
@@ -224,12 +225,16 @@ mod tests {
 			board.show_board();
 		}
 
-		// let board = moves.into_iter()
-		// 	.flat_map(|(_turn_num, white_move, black_move)| vec![white_move, black_move])
-		// 	.inspect(|mov| println!("{mov:?}"))
-		// 	.fold(Board::start_position(9), |board, mov| board.apply(&mov));
-		println!("{board:?}");
 		board.show_board();
-		todo!();
+
+		assert_eq!(board.board_size, 9);
+		assert_eq!(board.max_gap, 2);
+		assert_eq!(board.whose_move, Color::White);
+		assert_eq!(board.white_reserve, 1);
+		assert_eq!(board.black_reserve, 1);
+		let expected_white: HashSet<_> = vec![Coord(2, 8), Coord(5, 8), Coord(1, 4), Coord(4, 5), Coord(1, 1), Coord(8, 7), Coord(6, 6), Coord(2, 3), Coord(1, 0), Coord(5, 5), Coord(6, 3), Coord(6, 5), Coord(8, 6), Coord(6, 4), Coord(2, 2), Coord(4, 7), Coord(7, 8), Coord(1, 2), Coord(4, 8)].into();
+		let expected_black: HashSet<_> = vec![Coord(3, 5), Coord(0, 7), Coord(3, 2), Coord(4, 2), Coord(3, 4), Coord(2, 5), Coord(2, 7), Coord(0, 6), Coord(4, 4), Coord(3, 3), Coord(5, 2), Coord(4, 3), Coord(1, 6), Coord(5, 0), Coord(2, 6), Coord(6, 0), Coord(6, 1), Coord(0, 5), Coord(5, 1)].into();
+		assert_eq!(board.white, expected_white);
+		assert_eq!(board.black, expected_black);
 	}
 }
