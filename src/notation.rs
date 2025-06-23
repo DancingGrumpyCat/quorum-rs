@@ -124,8 +124,7 @@ pub fn parse_movement(i: &str) -> IResult<&str, MoveBuilder> {
 			builder.movement_active = Some(active);
 			builder.movement_conversions = Some(conversions);
 			builder.movement_pivot = Some(calculate_pivot(active, dest)
-				.expect(format!("{:?} cannot move to {:?} because the pivot would not align to the grid", active, dest)
-					.as_str()));
+				.unwrap_or_else(|| panic!("{:?} cannot move to {:?} because the pivot would not align to the grid", active, dest)));
 			builder
 		}).parse(i)
 }

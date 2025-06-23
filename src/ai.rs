@@ -10,7 +10,7 @@ pub trait Heuristic {
 
 pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mut alpha: Valuation, mut beta: Valuation) -> Valuation {
 	if depth == 0 {
-		return heuristic.heuristic(&board)
+		return heuristic.heuristic(board)
 	} else if let Some(Color::White) = board.winner() {
 		return Valuation::MAX;
 	} else if let Some(Color::Black) = board.winner() {
@@ -41,8 +41,8 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 
 pub fn best_move<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Option<Move> {
 	match board.whose_move {
-		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX)),
-		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(&mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX))
+		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX)),
+		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX))
 	}
 }
 
@@ -96,14 +96,14 @@ impl Heuristic for ConnectedComponentsHeuristic {
 		let mut white_pieces = board.white.clone();
 		let mut n_white_components = 0;
 		while !white_pieces.is_empty() {
-			let source = white_pieces.iter().next().unwrap().clone();
+			let source = *white_pieces.iter().next().unwrap();
 			n_white_components += 1;
 			white_pieces = white_pieces.difference(board.flood_fill(Color::White, source));
 		}
 		let mut black_pieces = board.black.clone();
 		let mut n_black_components = 0;
 		while !black_pieces.is_empty() {
-			let source = black_pieces.iter().next().unwrap().clone();
+			let source = *black_pieces.iter().next().unwrap();
 			n_black_components += 1;
 			black_pieces = black_pieces.difference(board.flood_fill(Color::Black, source));
 		}
@@ -119,7 +119,7 @@ impl Heuristic for NthSmallestStringHeuristic {
 		let mut white_sizes = BinaryHeap::new();
 		let mut white_pieces = board.white.clone();
 		while !white_pieces.is_empty() {
-			let source = white_pieces.iter().next().unwrap().clone();
+			let source = *white_pieces.iter().next().unwrap();
 			let string = board.flood_fill(Color::White, source);
 			white_sizes.push(string.len());
 			white_pieces = white_pieces.difference(string);
@@ -132,7 +132,7 @@ impl Heuristic for NthSmallestStringHeuristic {
 		let mut black_sizes = BinaryHeap::new();
 		let mut black_pieces = board.black.clone();
 		while !black_pieces.is_empty() {
-			let source = black_pieces.iter().next().unwrap().clone();
+			let source = *black_pieces.iter().next().unwrap();
 			let string = board.flood_fill(Color::Black, source);
 			black_sizes.push(string.len());
 			black_pieces = black_pieces.difference(string);
@@ -154,7 +154,7 @@ impl Heuristic for LinearCombinationHeuristic {
 	fn heuristic(&self, board: &Board) -> Valuation {
 		let mut sum = 0;
 		for (weight, subheuristic) in self.terms.iter() {
-			sum += weight * subheuristic.heuristic(&board);
+			sum += weight * subheuristic.heuristic(board);
 		}
 		sum
 	}
@@ -171,8 +171,8 @@ pub fn playout<H: Heuristic>(heuristic: H, root: &Board) -> Option<Color> {
 	while board.winner().is_none() {
 		let mut moves: Vec<_> = board.moves().collect();
 		let goal = match board.whose_move { Color::White => 1, Color::Black => -1 };
-		moves.sort_by_cached_key(|x| goal * -heuristic.heuristic(&board.apply(&x)));
-		if moves.len() == 0 {
+		moves.sort_by_cached_key(|x| goal * -heuristic.heuristic(&board.apply(x)));
+		if moves.is_empty() {
 			println!("Board with no winner and no moves, on {:?}'s turn with max gap {:?}", board.whose_move, board.max_gap);
 			board.show_board();
 			panic!();
@@ -180,6 +180,7 @@ pub fn playout<H: Heuristic>(heuristic: H, root: &Board) -> Option<Color> {
 		board = board.apply(&moves[0]);
 
 		ply += 1;
+		#[allow(clippy::modulo_one)]
 		if ply % 1 == 0 {
 			println!("Turn {} Heuristic {}", ply, heuristic.heuristic(&board));
 			board.show_board();

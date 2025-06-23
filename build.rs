@@ -26,7 +26,7 @@ fn main() {
         reserve_hashes.push(rng.next_u64().to_string());
     }
     let reserve_hashes_rust = format!("const RESERVE_HASHES: [u64; {}] = [{}];", N_RESERVE_HASHES, reserve_hashes.join(", "));
-    let turn_hashes = vec![rng.next_u64().to_string(), rng.next_u64().to_string()];
+    let turn_hashes = [rng.next_u64().to_string(), rng.next_u64().to_string()];
     let turn_hashes_rust = format!("const TURN_HASHES: [u64; 2] = [{}]", turn_hashes.join(", "));
 
     fs::write(&dest_path, format!("{piece_hashes_rust}\n{reserve_hashes_rust}\n{turn_hashes_rust};")).unwrap();

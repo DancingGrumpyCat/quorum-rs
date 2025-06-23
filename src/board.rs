@@ -33,7 +33,7 @@ impl Move {
 				let dy = pivot.1 - active.1;
 				Coord(pivot.0 + dx, pivot.1 + dy)
 			},
-			Move::Placement { at, .. } => at.clone()
+			Move::Placement { at, .. } => *at
 		}
 	}
 
@@ -94,7 +94,7 @@ pub enum IllegalMoveReason {
 }
 
 
-#[derive(Clone, Eq, Debug, Hash)]
+#[derive(Clone, Eq, Debug)]
 pub struct Board {
 	pub board_size: i32,
 	pub max_gap: i32,
@@ -120,11 +120,11 @@ impl PartialEq for Board {
 impl Board {
 	pub fn from_position(board_size: i32, whose_move: Color, white: HashSet<Coord>, black: HashSet<Coord>) -> Board {
 		let white_illegals: Vec<_> = white.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
-		if white_illegals.len() > 0 {
+		if !white_illegals.is_empty() {
 			panic!("White pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", white);
 		}
 		let black_illegals: Vec<_> = black.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
-		if black_illegals.len() > 0 {
+		if !black_illegals.is_empty() {
 			panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black);
 		}
 		Board { board_size, whose_move, white, black, white_reserve: 0, black_reserve: 0, max_gap: 2, zobrist_hash: 0 }
@@ -134,8 +134,8 @@ impl Board {
 		&self.white + &self.black
 	}
 
-	pub fn all_coords<'a>(&'a self) -> impl Iterator<Item=Coord> + 'a {
-		(0..self.board_size).into_iter().flat_map(|x| (0..self.board_size).into_iter().map(move |y| Coord(x,y)))
+	pub fn all_coords(&self) -> impl Iterator<Item=Coord> + '_ {
+		(0..self.board_size).flat_map(|x| (0..self.board_size).map(move |y| Coord(x,y)))
 	}
 
 	pub fn in_bounds(&self, coord: Coord) -> bool {
@@ -179,7 +179,7 @@ impl Board {
 				}
 				print!(" ");
 			}
-			println!("");
+			println!();
 		}
 	}
 
@@ -187,10 +187,10 @@ impl Board {
 		match mov {
 			Move::Movement { color, active, pivot, conversions } => {
 				let pieces = if *color == Color::Black { &self.black } else { &self.white };
-				if !pieces.contains(&active) {
+				if !pieces.contains(active) {
 					return Some(IllegalMoveReason::ActiveNotOwned);
 				}
-				if !pieces.contains(&pivot) {
+				if !pieces.contains(pivot) {
 					return Some(IllegalMoveReason::PivotNotOwned);
 				}
 				let dest = mov.dest();
@@ -211,7 +211,7 @@ impl Board {
 				None
 			},
 			Move::Placement { color, at } => {
-				if self.all_pieces().contains(&at) {
+				if self.all_pieces().contains(at) {
 					Some(IllegalMoveReason::DestNotEmpty)
 				} else if self.reserve_of(*color) <= 0 {
 					Some(IllegalMoveReason::EmptyReserve)
@@ -302,7 +302,7 @@ impl Board {
 	}
 
 	pub fn color_connected(&self, color: Color) -> bool {
-		let source: Coord = self.pieces_of(color).iter().next().unwrap().clone();
+		let source: Coord = *self.pieces_of(color).iter().next().unwrap();
 		self.flood_fill(color, source).len() == self.pieces_of(color).len()
 	}
 
@@ -312,7 +312,7 @@ impl Board {
 		else { None }
 	}
 
-	pub fn capturable_around<'a>(&'a self, color: Color, active: Coord, dest: Coord) -> impl Iterator<Item=Coord> + 'a {
+	pub fn capturable_around(&self, color: Color, active: Coord, dest: Coord) -> impl Iterator<Item=Coord> + '_ {
 		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
 			self.pieces_of(color.opponent()).contains(&maybe_captured)
 				&& self.neighborhood(maybe_captured).into_iter().all(|liberty|
@@ -321,20 +321,20 @@ impl Board {
 		})
 	}
 
-	pub fn convertible_around<'a>(&'a self, color: Color, active: Coord, dest: Coord ) -> impl Iterator<Item=Coord> + 'a {
+	pub fn convertible_around(& self, color: Color, active: Coord, dest: Coord ) -> impl Iterator<Item=Coord> + '_ {
 		self.neighborhood(dest).into_iter().filter(move |neighbor| {
 			let flanker_x = (neighbor.0 - dest.0) * 2 + dest.0;
 			let flanker_y = (neighbor.1 - dest.1) * 2 + dest.1;
 			let flanker = Coord(flanker_x, flanker_y);
 
 			flanker != active
-				&& self.pieces_of(color.opponent()).contains(&neighbor)
+				&& self.pieces_of(color.opponent()).contains(neighbor)
 				&& self.pieces_of(color).contains(&flanker)
 				&& !self.capturable_around(color, active, dest).collect::<Vec<_>>().contains(&active)
 		})
 	}
 
-	pub fn moves_of<'a>(&'a self, color: Color) -> impl Iterator<Item=Move> + 'a {
+	pub fn moves_of(&self, color: Color) -> impl Iterator<Item=Move> + '_ {
 		let mut mvmts: Vec<Move> = vec![];
 
 		for active in self.pieces_of(color).iter().cloned() {
@@ -351,7 +351,7 @@ impl Board {
 						mvmts.push(Move::Movement { color, active, pivot, conversions });
 					} else {
 						for combination in conversions.into_iter().combinations(self.reserve_of(color) as usize) {
-								mvmts.push(Move::Movement { color, active, pivot, conversions: combination.into() });
+								mvmts.push(Move::Movement { color, active, pivot, conversions: combination });
 						}
 					}
 				}
@@ -360,14 +360,14 @@ impl Board {
 
 		let placements = self.all_coords()
 			// TODO calculate reserve_of ahead of time
-			.filter(move |coord| self.reserve_of(color) > 0 && !self.all_pieces().contains(&coord))
-			.map(move |coord| Move::Placement { color: color, at: coord });
+			.filter(move |coord| self.reserve_of(color) > 0 && !self.all_pieces().contains(coord))
+			.map(move |coord| Move::Placement { color, at: coord });
 
 		mvmts.into_iter().filter(|x| self.valid_move(x).is_none())
 			.chain(placements)
 	}
 
-	pub fn moves<'a>(&'a self) -> impl Iterator<Item=Move> + 'a {
+	pub fn moves(&self) -> impl Iterator<Item=Move> + '_ {
 		self.moves_of(self.whose_move)
 	}
 
@@ -418,9 +418,9 @@ impl Board {
 	}
 
 	pub fn apply(&self, mov: &Move) -> Board {
-		assert_eq!(None, self.valid_move(&mov));
+		assert_eq!(None, self.valid_move(mov));
 		let mut new_board = self.clone();
-		let delta = self.move_delta(&mov);
+		let delta = self.move_delta(mov);
 		new_board.zobrist_hash = self.apply_to_zobrist_hash(&delta);
 		for coord in delta.white_minus { new_board.white.remove(&coord); }
 		for coord in delta.white_plus { new_board.white.insert(coord); }
