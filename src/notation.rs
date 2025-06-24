@@ -1,5 +1,4 @@
 use crate::board::*;
-use im::HashSet;
 
 use nom::{
 	IResult,
@@ -180,6 +179,7 @@ pub fn game_result(i: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use im::HashSet;
 
 	#[test]
 	#[should_panic]
