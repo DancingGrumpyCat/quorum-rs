@@ -59,7 +59,7 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 			let mut value = Valuation::MIN;
 
 			let mut moves: Vec<_> = board.moves().collect();
-			moves.sort_by_key(|x| PieceCountHeuristic{}.heuristic(&board.apply(&x)));
+			moves.sort_by_cached_key(|x| PieceCountHeuristic{}.heuristic(&board.apply(&x)));
 
 			for mov in moves {
 				value = cmp::max(value, minimax_eval(&board.apply(&mov), depth-1, heuristic, alpha, beta));
@@ -74,7 +74,7 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 			let mut value = Valuation::MAX;
 
 			let mut moves: Vec<_> = board.moves().collect();
-			moves.sort_by_key(|x| -PieceCountHeuristic{}.heuristic(&board.apply(&x)));
+			moves.sort_by_cached_key(|x| -PieceCountHeuristic{}.heuristic(&board.apply(&x)));
 
 			for mov in moves {
 				value = cmp::min(value, minimax_eval(&board.apply(&mov), depth-1, heuristic, alpha, beta));
