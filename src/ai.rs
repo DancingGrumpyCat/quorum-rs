@@ -1,6 +1,7 @@
 use crate::board::*;
-use std::collections::BinaryHeap;
 use std::cmp;
+use std::collections::BinaryHeap;
+use std::sync::RwLock;
 
 type Valuation = i32;
 
@@ -8,8 +9,45 @@ pub trait Heuristic {
 	fn heuristic(&self, board: &Board) -> Valuation;
 }
 
+pub const TRANSPOSITION_TABLE_SIZE: usize = 1048576;
+
+pub struct TranspositionTable {
+	contents: Vec<Vec<(u64, Valuation)>>
+}
+
+impl TranspositionTable {
+	pub fn new() -> TranspositionTable {
+		let mut contents = Vec::with_capacity(TRANSPOSITION_TABLE_SIZE);
+		for _ in 0..TRANSPOSITION_TABLE_SIZE {
+			contents.push(vec![]);
+		}
+		TranspositionTable { contents }
+	}
+
+	pub fn add(&mut self, board: &Board, value: Valuation) {
+		self.contents[board.zobrist_hash as usize % TRANSPOSITION_TABLE_SIZE].push((board.zobrist_hash, value));
+	}
+
+	pub fn get(&self, board: &Board) -> Option<Valuation> {
+		self.contents[board.zobrist_hash as usize % TRANSPOSITION_TABLE_SIZE]
+			.iter()
+			.find(|(hash, _)| *hash == board.zobrist_hash)
+			.map(|(_, value)| *value)
+	}
+}
+
+impl Default for TranspositionTable {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+pub static TRANSPOSITION_TABLE: RwLock<TranspositionTable> = RwLock::new(TranspositionTable { contents: vec![] });
+
 pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mut alpha: Valuation, mut beta: Valuation) -> Valuation {
-	if depth == 0 {
+	if let Some(value) = TRANSPOSITION_TABLE.read().unwrap().get(board) {
+		return value;
+	} else if depth == 0 {
 		return heuristic.heuristic(board)
 	} else if let Some(Color::White) = board.winner() {
 		return Valuation::MAX;
@@ -24,6 +62,7 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 				if value >= beta { break; }
 				alpha = cmp::max(alpha, value)
 			}
+			TRANSPOSITION_TABLE.write().unwrap().add(board, value);
 			value
 		},
 
@@ -34,6 +73,7 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 				if value <= alpha { break; }
 				beta = cmp::min(beta, value)
 			}
+			TRANSPOSITION_TABLE.write().unwrap().add(board, value);
 			value
 		}
 	}
