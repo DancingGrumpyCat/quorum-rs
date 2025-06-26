@@ -4,6 +4,8 @@ use std::cmp;
 
 use crate::hashes::*;
 
+const N_PIECES_PER_COLOR: usize = 20;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Coord(pub i32, pub i32);
 
@@ -127,7 +129,9 @@ impl Board {
 		if !black_illegals.is_empty() {
 			panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black);
 		}
-		Board { board_size, whose_move, white, black, white_reserve: 0, black_reserve: 0, max_gap: 2, zobrist_hash: 0 }
+		let white_reserve = (N_PIECES_PER_COLOR - white.len()).try_into().unwrap_or(0);
+		let black_reserve = (N_PIECES_PER_COLOR - black.len()).try_into().unwrap_or(0);
+		Board { board_size, whose_move, white, black, white_reserve, black_reserve, max_gap: 2, zobrist_hash: 0 }
 	}
 
 	pub fn all_pieces(&self) -> impl Iterator<Item=Coord> + '_ {
@@ -194,7 +198,7 @@ impl Board {
 					return Some(IllegalMoveReason::PivotNotOwned);
 				}
 				let dest = mov.dest();
-				if self.all_pieces().any(|x| x == dest) {
+				if self.all_pieces().contains(&dest) {
 					return Some(IllegalMoveReason::DestNotEmpty);
 				}
 				if !self.in_bounds(dest) {
@@ -205,13 +209,13 @@ impl Board {
 				}
 				if conversions.iter().cloned()
 					.any(|converted| self.capturable_around(*color, *active, dest)
-						.any(|captured| captured == converted)) {
+						.contains(&converted)) {
 					return Some(IllegalMoveReason::TriedConvertCapture)
 				}
 				None
 			},
 			Move::Placement { color, at } => {
-				if self.all_pieces().any(|x| x == *at) {
+				if self.all_pieces().contains(at) {
 					Some(IllegalMoveReason::DestNotEmpty)
 				} else if self.reserve_of(*color) <= 0 {
 					Some(IllegalMoveReason::EmptyReserve)
@@ -316,7 +320,7 @@ impl Board {
 		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
 			self.pieces_of(color.opponent()).contains(&maybe_captured)
 				&& self.neighborhood(maybe_captured).into_iter().all(|liberty|
-					(self.all_pieces().any(|x| x == liberty) || liberty == dest)
+					(self.all_pieces().contains(&liberty) || liberty == dest)
 					&& !self.neighborhood(dest).contains(&active))
 		})
 	}
@@ -360,7 +364,7 @@ impl Board {
 
 		let placements = self.all_coords()
 			// TODO calculate reserve_of ahead of time
-			.filter(move |coord| self.reserve_of(color) > 0 && !self.all_pieces().any(|x| x == *coord))
+			.filter(move |coord| self.reserve_of(color) > 0 && !self.all_pieces().contains(coord))
 			.map(move |coord| Move::Placement { color, at: coord });
 
 		mvmts.into_iter().filter(|x| self.valid_move(x).is_none())
@@ -418,7 +422,7 @@ impl Board {
 	}
 
 	pub fn apply(&self, mov: &Move) -> Board {
-		assert_eq!(None, self.valid_move(mov));
+		debug_assert_eq!(None, self.valid_move(mov));
 		let mut new_board = self.clone();
 		let delta = self.move_delta(mov);
 		new_board.zobrist_hash = self.apply_to_zobrist_hash(&delta);
