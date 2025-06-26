@@ -3,6 +3,10 @@ name = "quorum"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "quorum"
+edition = "2021"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -12,3 +16,10 @@ nom = "8.0.0"
 
 [build-dependencies]
 rand_chacha = "0.9.0"
+
+[dev-dependencies]
+criterion = "0.6.0"
+
+[[bench]]
+name = "benchmarks"
+harness = false
