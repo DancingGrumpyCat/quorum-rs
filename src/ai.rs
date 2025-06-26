@@ -24,10 +24,12 @@ impl TranspositionTable {
 		TranspositionTable { contents }
 	}
 
+	#[inline]
 	pub fn add(&mut self, board: &Board, value: Valuation) {
 		self.contents[board.zobrist_hash as usize % TRANSPOSITION_TABLE_SIZE].push((board.zobrist_hash, value));
 	}
 
+	#[inline]
 	pub fn get(&self, board: &Board) -> Option<Valuation> {
 		self.contents[board.zobrist_hash as usize % TRANSPOSITION_TABLE_SIZE]
 			.iter()
@@ -100,6 +102,7 @@ impl Heuristic for PieceCountHeuristic {
 pub struct LegalMovesHeuristic {}
 
 impl Heuristic for LegalMovesHeuristic {
+	#[inline]
 	fn heuristic(&self, board: &Board) -> Valuation {
 		let white_moves: Vec<_> = board.moves_of(Color::White).collect();
 		let black_moves: Vec<_> = board.moves_of(Color::Black).collect();
@@ -110,6 +113,7 @@ impl Heuristic for LegalMovesHeuristic {
 pub struct CentroidDistanceHeuristic { pub power: f32 }
 
 impl Heuristic for CentroidDistanceHeuristic {
+	#[inline]
 	fn heuristic(&self, board: &Board) -> Valuation {
 		let white_centroid = board.white.iter().cloned().map(|Coord(x,y)|
 			(x as f32 / board.white.len() as f32,
@@ -135,6 +139,7 @@ impl Heuristic for CentroidDistanceHeuristic {
 pub struct ConnectedComponentsHeuristic {}
 
 impl Heuristic for ConnectedComponentsHeuristic {
+	#[inline]
 	fn heuristic(&self, board: &Board) -> Valuation {
 		let mut white_pieces = board.white.clone();
 		let mut n_white_components = 0;
@@ -158,6 +163,7 @@ impl Heuristic for ConnectedComponentsHeuristic {
 pub struct NthSmallestStringHeuristic { pub n: usize }
 
 impl Heuristic for NthSmallestStringHeuristic {
+	#[inline]
 	fn heuristic(&self, board: &Board) -> Valuation {
 		let mut white_sizes = BinaryHeap::new();
 		let mut white_pieces = board.white.clone();
@@ -194,6 +200,7 @@ pub struct LinearCombinationHeuristic {
 }
 
 impl Heuristic for LinearCombinationHeuristic {
+	#[inline]
 	fn heuristic(&self, board: &Board) -> Valuation {
 		let mut sum = 0;
 		for (weight, subheuristic) in self.terms.iter() {
