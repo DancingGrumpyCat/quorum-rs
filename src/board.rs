@@ -1,13 +1,13 @@
 use im::HashSet;
 use itertools::Itertools;
 use std::cmp;
-use smallvec::{SmallVec, smallvec};
+use tinyvec::{ArrayVec, array_vec};
 
 use crate::hashes::*;
 
 const N_PIECES_PER_COLOR: usize = 20;
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
 pub struct Coord(pub i32, pub i32);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -24,7 +24,7 @@ impl Color {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Move {
-	Movement { color: Color, active: Coord, pivot: Coord, conversions: SmallVec<[Coord; 1]> },
+	Movement { color: Color, active: Coord, pivot: Coord, conversions: ArrayVec<[Coord; 8]> },
 	Placement { color: Color, at: Coord }
 }
 
@@ -54,15 +54,15 @@ impl Move {
 
 	#[inline]
 	pub fn movement(color: Color, active: Coord, pivot: Coord) -> Move {
-		Move::Movement { color, active, pivot, conversions: smallvec![] }
+		Move::Movement { color, active, pivot, conversions: array_vec![] }
 	}
 }
 
 pub struct MoveDelta {
-	pub white_minus: Vec<Coord>,
-	pub white_plus:  Vec<Coord>,
-	pub black_minus: Vec<Coord>,
-	pub black_plus:  Vec<Coord>,
+	pub white_minus: ArrayVec<[Coord; 8]>,
+	pub white_plus:  ArrayVec<[Coord; 8]>,
+	pub black_minus: ArrayVec<[Coord; 8]>,
+	pub black_plus:  ArrayVec<[Coord; 8]>,
 	pub white_reserve: i32,
 	pub black_reserve: i32
 }
@@ -70,11 +70,11 @@ pub struct MoveDelta {
 impl MoveDelta {
 	#[inline]
 	fn new() -> MoveDelta {
-		MoveDelta { white_minus: vec![], white_plus: vec![], black_minus: vec![], black_plus: vec![], white_reserve: 0, black_reserve: 0 }
+		MoveDelta { white_minus: array_vec![], white_plus: array_vec![], black_minus: array_vec![], black_plus: array_vec![], white_reserve: 0, black_reserve: 0 }
 	}
 
 	#[inline]
-	fn plus_of_mut(&mut self, color: Color) -> &mut Vec<Coord> {
+	fn plus_of_mut(&mut self, color: Color) -> &mut ArrayVec<[Coord; 8]> {
 		match color {
 			Color::White => &mut self.white_plus,
 			Color::Black => &mut self.black_plus
@@ -82,7 +82,7 @@ impl MoveDelta {
 	}
 
 	#[inline]
-	fn minus_of_mut(&mut self, color: Color) -> &mut Vec<Coord> {
+	fn minus_of_mut(&mut self, color: Color) -> &mut ArrayVec<[Coord; 8]> {
 		match color {
 			Color::White => &mut self.white_minus,
 			Color::Black => &mut self.black_minus
@@ -376,12 +376,12 @@ impl Board {
 							color, self.pieces_of(color).len(), self.reserve_of(color));
 					}
 					let base_mvmt = Move::movement(color, active, pivot);
-					let conversions: SmallVec<_> = self.convertible_around(color, active, base_mvmt.dest()).collect();
+					let conversions: ArrayVec<_> = self.convertible_around(color, active, base_mvmt.dest()).collect();
 					if conversions.len() as i32 <= self.reserve_of(color) {
 						mvmts.push(Move::Movement { color, active, pivot, conversions });
 					} else {
 						for combination in conversions.into_iter().combinations(self.reserve_of(color) as usize) {
-								mvmts.push(Move::Movement { color, active, pivot, conversions: combination.into() });
+								mvmts.push(Move::Movement { color, active, pivot, conversions: combination.as_slice().try_into().unwrap() });
 						}
 					}
 				}

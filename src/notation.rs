@@ -48,7 +48,7 @@ impl MoveBuilder {
 		match self {
 			MoveBuilder {
 				color: Some(color), movement_active: Some(active), movement_pivot: Some(pivot), movement_conversions: Some(conversions), .. } =>
-				Move::Movement { color, active, pivot, conversions: conversions.into() },
+				Move::Movement { color, active, pivot, conversions: conversions.as_slice().try_into().unwrap() },
 			_ => panic!("Error while parsing movement")
 		}
 	}
