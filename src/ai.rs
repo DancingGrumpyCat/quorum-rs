@@ -49,10 +49,13 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 		return value;
 	} else if depth == 0 {
 		return heuristic.heuristic(board)
-	} else if let Some(Color::White) = board.winner() {
-		return Valuation::MAX;
-	} else if let Some(Color::Black) = board.winner() {
-		return Valuation::MIN;
+	} else if let Some(winner) = board.winner() {
+		let value = match winner {
+			Color::White => Valuation::MAX,
+			Color::Black => Valuation::MIN
+		};
+		TRANSPOSITION_TABLE.write().unwrap().add(board, value);
+		return value;
 	}
 	match board.whose_move {
 		Color::White => {
