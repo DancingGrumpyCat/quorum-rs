@@ -1,6 +1,7 @@
 use im::HashSet;
 use itertools::Itertools;
 use std::cmp;
+use smallvec::{SmallVec, smallvec};
 
 use crate::hashes::*;
 
@@ -23,7 +24,7 @@ impl Color {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Move {
-	Movement { color: Color, active: Coord, pivot: Coord, conversions: Vec<Coord> },
+	Movement { color: Color, active: Coord, pivot: Coord, conversions: SmallVec<[Coord; 1]> },
 	Placement { color: Color, at: Coord }
 }
 
@@ -50,7 +51,7 @@ impl Move {
 	}
 
 	pub fn movement(color: Color, active: Coord, pivot: Coord) -> Move {
-		Move::Movement { color, active, pivot, conversions: vec![] }
+		Move::Movement { color, active, pivot, conversions: smallvec![] }
 	}
 }
 
@@ -349,13 +350,12 @@ impl Board {
 							color, self.pieces_of(color).len(), self.reserve_of(color));
 					}
 					let base_mvmt = Move::movement(color, active, pivot);
-					let conversions: Vec<_> = self.convertible_around(color, active, base_mvmt.dest())
-						.collect();
+					let conversions: SmallVec<_> = self.convertible_around(color, active, base_mvmt.dest()).collect();
 					if conversions.len() as i32 <= self.reserve_of(color) {
 						mvmts.push(Move::Movement { color, active, pivot, conversions });
 					} else {
 						for combination in conversions.into_iter().combinations(self.reserve_of(color) as usize) {
-								mvmts.push(Move::Movement { color, active, pivot, conversions: combination });
+								mvmts.push(Move::Movement { color, active, pivot, conversions: combination.into() });
 						}
 					}
 				}
