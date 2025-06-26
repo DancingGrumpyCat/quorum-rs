@@ -29,6 +29,7 @@ pub enum Move {
 }
 
 impl Move {
+	#[inline]
 	pub fn dest(&self) -> Coord {
 		match self {
 			Move::Movement { active, pivot, .. } => {
@@ -40,6 +41,7 @@ impl Move {
 		}
 	}
 
+	#[inline]
 	pub fn gap(&self) -> i32 {
 		match self {
 			Move::Movement { active, pivot, .. } => {
@@ -50,6 +52,7 @@ impl Move {
 		}
 	}
 
+	#[inline]
 	pub fn movement(color: Color, active: Coord, pivot: Coord) -> Move {
 		Move::Movement { color, active, pivot, conversions: smallvec![] }
 	}
@@ -65,10 +68,12 @@ pub struct MoveDelta {
 }
 
 impl MoveDelta {
+	#[inline]
 	fn new() -> MoveDelta {
 		MoveDelta { white_minus: vec![], white_plus: vec![], black_minus: vec![], black_plus: vec![], white_reserve: 0, black_reserve: 0 }
 	}
 
+	#[inline]
 	fn plus_of_mut(&mut self, color: Color) -> &mut Vec<Coord> {
 		match color {
 			Color::White => &mut self.white_plus,
@@ -76,6 +81,7 @@ impl MoveDelta {
 		}
 	}
 
+	#[inline]
 	fn minus_of_mut(&mut self, color: Color) -> &mut Vec<Coord> {
 		match color {
 			Color::White => &mut self.white_minus,
@@ -83,6 +89,7 @@ impl MoveDelta {
 		}
 	}
 
+	#[inline]
 	fn reserve_of_mut(&mut self, color: Color) -> &mut i32 {
 		match color {
 			Color::White => &mut self.white_reserve,
@@ -110,6 +117,7 @@ pub struct Board {
 }
 
 impl PartialEq for Board {
+	#[inline]
 	fn eq(&self, other: &Self) -> bool {
 		self.board_size == other.board_size
 			&& self.max_gap == other.max_gap
@@ -135,14 +143,17 @@ impl Board {
 		Board { board_size, whose_move, white, black, white_reserve, black_reserve, max_gap: 2, zobrist_hash: 0 }
 	}
 
+	#[inline]
 	pub fn all_pieces(&self) -> impl Iterator<Item=Coord> + '_ {
 		self.white.iter().chain(self.black.iter()).cloned()
 	}
 
+	#[inline]
 	pub fn all_coords(&self) -> impl Iterator<Item=Coord> + '_ {
 		(0..self.board_size).flat_map(|x| (0..self.board_size).map(move |y| Coord(x,y)))
 	}
 
+	#[inline]
 	pub fn in_bounds(&self, coord: Coord) -> bool {
 		0 <= coord.0 && coord.0 < self.board_size &&
 		0 <= coord.1 && coord.1 < self.board_size
@@ -188,6 +199,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn valid_move(&self, mov: &Move) -> Option<IllegalMoveReason> {
 		match mov {
 			Move::Movement { color, active, pivot, conversions } => {
@@ -227,6 +239,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn pieces_of(&self, color: Color) -> &HashSet<Coord> {
 		match color {
 			Color::White => &self.white,
@@ -234,6 +247,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn pieces_of_mut(&mut self, color: Color) -> &mut HashSet<Coord> {
 		match color {
 			Color::White => &mut self.white,
@@ -241,6 +255,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn reserve_of(&self, color: Color) -> i32 {
 		match color {
 			Color::White => self.white_reserve,
@@ -248,6 +263,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn reserve_of_mut(&mut self, color: Color) -> &mut i32 {
 		match color {
 			Color::White => &mut self.white_reserve,
@@ -255,6 +271,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn insert_for(&self, color: Color, coord: Coord) -> Option<Coord> {
 		match color {
 			Color::White => self.white.clone().insert(coord),
@@ -262,6 +279,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn remove_for(&self, color: Color, coord: Coord) -> Option<Coord> {
 		match color {
 			Color::White => self.white.clone().remove(&coord),
@@ -269,6 +287,7 @@ impl Board {
 		}
 	}
 
+	#[inline]
 	pub fn neighborhood(&self, coord: Coord) -> Vec<Coord> {
 		let Coord(x, y) = coord;
 		let mut neighbors = vec![];
@@ -285,11 +304,13 @@ impl Board {
 		neighbors
 	}
 
+	#[inline]
 	pub fn orthogonal_neighborhood(&self, coord: Coord) -> Vec<Coord> {
 		let Coord(x,y) = coord;
 		vec![Coord(x+1, y), Coord(x-1, y), Coord(x, y+1), Coord(x, y-1)]
 	}
 
+	#[inline]
 	pub fn flood_fill(&self, color: Color, source: Coord) -> HashSet<Coord> {
 		let mut visited = HashSet::from(vec![source]);
 		let mut queued: HashSet<Coord> = self.orthogonal_neighborhood(source).into_iter().collect();
@@ -306,17 +327,20 @@ impl Board {
 		visited
 	}
 
+	#[inline]
 	pub fn color_connected(&self, color: Color) -> bool {
 		let source: Coord = *self.pieces_of(color).iter().next().unwrap();
 		self.flood_fill(color, source).len() == self.pieces_of(color).len()
 	}
 
+	#[inline]
 	pub fn winner(&self) -> Option<Color> {
 		if self.color_connected(Color::Black) { Some(Color::Black) }
 		else if self.color_connected(Color::White) { Some(Color::White) }
 		else { None }
 	}
 
+	#[inline]
 	pub fn capturable_around(&self, color: Color, active: Coord, dest: Coord) -> impl Iterator<Item=Coord> + '_ {
 		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
 			self.pieces_of(color.opponent()).contains(&maybe_captured)
@@ -326,6 +350,7 @@ impl Board {
 		})
 	}
 
+	#[inline]
 	pub fn convertible_around(& self, color: Color, active: Coord, dest: Coord ) -> impl Iterator<Item=Coord> + '_ {
 		self.neighborhood(dest).into_iter().filter(move |neighbor| {
 			let flanker_x = (neighbor.0 - dest.0) * 2 + dest.0;
@@ -339,6 +364,7 @@ impl Board {
 		})
 	}
 
+	#[inline]
 	pub fn moves_of(&self, color: Color) -> impl Iterator<Item=Move> + '_ {
 		let mut mvmts: Vec<Move> = vec![];
 
@@ -371,10 +397,12 @@ impl Board {
 			.chain(placements)
 	}
 
+	#[inline]
 	pub fn moves(&self) -> impl Iterator<Item=Move> + '_ {
 		self.moves_of(self.whose_move)
 	}
 
+	#[inline]
 	pub fn move_delta (&self, mov: &Move) -> MoveDelta {
 		let mut this_move_delta = MoveDelta::new();
 		match mov {
@@ -407,6 +435,7 @@ impl Board {
 		this_move_delta
 	}
 
+	#[inline]
 	pub fn apply_to_zobrist_hash(&self, delta: &MoveDelta) -> u64 {
 		let mut new_hash = self.zobrist_hash;
 		for coord in &delta.white_plus  { new_hash ^= piece_hash(Color::White, *coord) }
@@ -421,6 +450,7 @@ impl Board {
 		new_hash
 	}
 
+	#[inline]
 	pub fn apply(&self, mov: &Move) -> Board {
 		debug_assert_eq!(None, self.valid_move(mov));
 		let mut new_board = self.clone();
