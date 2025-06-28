@@ -46,11 +46,13 @@ impl Default for TranspositionTable {
 
 pub static TRANSPOSITION_TABLE: RwLock<TranspositionTable> = RwLock::new(TranspositionTable { contents: vec![] });
 
-pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mut alpha: Valuation, mut beta: Valuation) -> Valuation {
+pub fn minimax_eval<H: Heuristic>(board: &Board, depth: i32, heuristic: &H, mut alpha: Valuation, mut beta: Valuation) -> Valuation {
 	if let Some(value) = TRANSPOSITION_TABLE.read().unwrap().get(board) {
 		return value;
 	} else if depth == 0 {
 		return heuristic.heuristic(board)
+	} else if depth < 0 {
+		panic!("depth < 0");
 	} else if let Some(winner) = board.winner() {
 		let value = match winner {
 			Color::White => Valuation::MAX,
@@ -84,7 +86,7 @@ pub fn minimax_eval<H: Heuristic>(board: &Board, depth: usize, heuristic: &H, mu
 	}
 }
 
-pub fn best_move<H: Heuristic>(board: &Board, depth: usize, heuristic: &H) -> Option<Move> {
+pub fn best_move<H: Heuristic>(board: &Board, depth: i32, heuristic: &H) -> Option<Move> {
 	match board.whose_move {
 		Color::White => board.moves().max_by_key(|mov| minimax_eval(&board.apply(mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX)),
 		Color::Black => board.moves().min_by_key(|mov| minimax_eval(&board.apply(mov), depth-1, heuristic, Valuation::MIN, Valuation::MAX))
