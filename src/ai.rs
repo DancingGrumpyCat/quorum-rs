@@ -47,19 +47,22 @@ impl Default for TranspositionTable {
 pub static TRANSPOSITION_TABLE: RwLock<TranspositionTable> = RwLock::new(TranspositionTable { contents: vec![] });
 
 pub fn minimax_eval<H: Heuristic>(board: &Board, depth: i32, heuristic: &H, mut alpha: Valuation, mut beta: Valuation) -> Valuation {
-	if let Some(value) = TRANSPOSITION_TABLE.read().unwrap().get(board) {
-		return value;
-	} else if depth == 0 {
-		return heuristic.heuristic(board)
-	} else if depth < 0 {
-		panic!("depth < 0");
-	} else if let Some(winner) = board.winner() {
-		let value = match winner {
-			Color::White => Valuation::MAX,
-			Color::Black => Valuation::MIN
-		};
-		TRANSPOSITION_TABLE.write().unwrap().add(board, value);
-		return value;
+	{
+		let mut transpositions = TRANSPOSITION_TABLE.write().unwrap();
+		if let Some(value) = transpositions.get(board) {
+			return value;
+		} else if depth == 0 {
+			return heuristic.heuristic(board)
+		} else if depth < 0 {
+			panic!("depth < 0");
+		} else if let Some(winner) = board.winner() {
+			let value = match winner {
+				Color::White => Valuation::MAX,
+				Color::Black => Valuation::MIN
+			};
+			transpositions.add(board, value);
+			return value;
+		}
 	}
 	match board.whose_move {
 		Color::White => {
