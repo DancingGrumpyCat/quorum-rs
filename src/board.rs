@@ -1,4 +1,4 @@
-use im::HashSet;
+use im::OrdSet;
 use itertools::Itertools;
 use std::cmp;
 use tinyvec::{ArrayVec, array_vec};
@@ -108,8 +108,8 @@ pub enum IllegalMoveReason {
 pub struct Board {
 	pub board_size: i32,
 	pub max_gap: i32,
-	pub white: HashSet<Coord>,
-	pub black: HashSet<Coord>,
+	pub white: OrdSet<Coord>,
+	pub black: OrdSet<Coord>,
 	pub white_reserve: i32,
 	pub black_reserve: i32,
 	pub whose_move: Color,
@@ -129,7 +129,7 @@ impl PartialEq for Board {
 }
 
 impl Board {
-	pub fn from_position(board_size: i32, whose_move: Color, white: HashSet<Coord>, black: HashSet<Coord>) -> Board {
+	pub fn from_position(board_size: i32, whose_move: Color, white: OrdSet<Coord>, black: OrdSet<Coord>) -> Board {
 		let white_illegals: Vec<_> = white.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
 		if !white_illegals.is_empty() {
 			panic!("White pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", white);
@@ -162,8 +162,8 @@ impl Board {
 	pub fn start_position(board_size: i32) -> Board {
 		assert!(board_size >= 8);
 
-		let mut black = HashSet::new();
-		let mut white = HashSet::new();
+		let mut black = OrdSet::new();
+		let mut white = OrdSet::new();
 		for x in 0..board_size {
 			for y in 0..board_size {
 				if x + y < 4 || x + y > 2*board_size - 6 {
@@ -240,7 +240,7 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn pieces_of(&self, color: Color) -> &HashSet<Coord> {
+	pub fn pieces_of(&self, color: Color) -> &OrdSet<Coord> {
 		match color {
 			Color::White => &self.white,
 			Color::Black => &self.black
@@ -248,7 +248,7 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn pieces_of_mut(&mut self, color: Color) -> &mut HashSet<Coord> {
+	pub fn pieces_of_mut(&mut self, color: Color) -> &mut OrdSet<Coord> {
 		match color {
 			Color::White => &mut self.white,
 			Color::Black => &mut self.black
@@ -311,11 +311,11 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn flood_fill(&self, color: Color, source: Coord) -> HashSet<Coord> {
-		let mut visited = HashSet::from(vec![source]);
-		let mut queued: HashSet<Coord> = self.orthogonal_neighborhood(source).into_iter().collect();
+	pub fn flood_fill(&self, color: Color, source: Coord) -> OrdSet<Coord> {
+		let mut visited = OrdSet::from(vec![source]);
+		let mut queued: OrdSet<Coord> = self.orthogonal_neighborhood(source).into_iter().collect();
 		while !queued.is_empty() {
-			let mut next_queued: HashSet<Coord> = HashSet::new();
+			let mut next_queued: OrdSet<Coord> = OrdSet::new();
 			for neighbor in queued {
 				if self.pieces_of(color).contains(&neighbor) && !visited.contains(&neighbor) {
 					visited.insert(neighbor);
@@ -559,39 +559,39 @@ mod tests {
 
 	#[test]
 	fn test_convertibles() {
-		let black = HashSet::from(vec![Coord(3,3), Coord(5,3), Coord(7,5), Coord(6,5)]);
-		let white = HashSet::from(vec![Coord(4,4), Coord(5,4), Coord(4,5)]);
+		let black = OrdSet::from(vec![Coord(3,3), Coord(5,3), Coord(7,5), Coord(6,5)]);
+		let white = OrdSet::from(vec![Coord(4,4), Coord(5,4), Coord(4,5)]);
 		let board = Board::from_position(9, Color::White, white, black);
 		let expected = vec![Coord(4,4), Coord(5,4)];
 		let actual: Vec<_> = board.convertible_around(Color::Black, Coord(7,5), Coord(5,5)).collect();
-		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
+		assert_eq!(OrdSet::<Coord>::from(expected), OrdSet::<Coord>::from(actual));
 	}
 
 	#[test]
 	fn test_capturables() {
-		let black = HashSet::<Coord>::from(
+		let black = OrdSet::<Coord>::from(
 			vec![Coord(1,1), Coord(1,2), Coord(1,3), Coord(2,1), Coord(3,1), Coord(3,4), Coord(3,5), Coord(4,2), Coord(4,3)]);
-		let white = HashSet::<Coord>::from(vec![Coord(2,2), Coord(2,3), Coord(3,2), Coord(4,1)]);
+		let white = OrdSet::<Coord>::from(vec![Coord(2,2), Coord(2,3), Coord(3,2), Coord(4,1)]);
 		let board = Board::from_position(9, Color::White, white, black);
 		let expected = vec![Coord(2,2), Coord(3,2)];
 		let actual: Vec<_> = board.capturable_around(Color::Black, Coord(3,5), Coord(3,3)).collect();
-		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
+		assert_eq!(OrdSet::<Coord>::from(expected), OrdSet::<Coord>::from(actual));
 	}
 
 	#[test]
 	fn test_capturables_on_board_edge() {
-		let black = HashSet::<Coord>::from(vec![Coord(0,0), Coord(2,3), Coord(1,2)]);
-		let white = HashSet::<Coord>::from(vec![Coord(0,2), Coord(0,3), Coord(1,0), Coord(1,1), Coord(1,3), Coord(2,0), Coord(2,1)]);
+		let black = OrdSet::<Coord>::from(vec![Coord(0,0), Coord(2,3), Coord(1,2)]);
+		let white = OrdSet::<Coord>::from(vec![Coord(0,2), Coord(0,3), Coord(1,0), Coord(1,1), Coord(1,3), Coord(2,0), Coord(2,1)]);
 		let board = Board::from_position(9, Color::White, white, black);
 		let expected = vec![Coord(0,2), Coord(1,0)];
 		let actual: Vec<_> = board.capturable_around(Color::Black, Coord(2,3), Coord(0,1)).collect();
-		assert_eq!(HashSet::<Coord>::from(expected), HashSet::<Coord>::from(actual));
+		assert_eq!(OrdSet::<Coord>::from(expected), OrdSet::<Coord>::from(actual));
 	}
 
 	#[test]
 	fn test_flood_fill() {
-		let black = HashSet::<Coord>::from(vec![Coord(1,2), Coord(1,3), Coord(2,1), Coord(2,3), Coord(3,1)]);
-		let white = HashSet::<Coord>::from(vec![Coord(2,2), Coord(3,2), Coord(3,3), Coord(4,3)]);
+		let black = OrdSet::<Coord>::from(vec![Coord(1,2), Coord(1,3), Coord(2,1), Coord(2,3), Coord(3,1)]);
+		let white = OrdSet::<Coord>::from(vec![Coord(2,2), Coord(3,2), Coord(3,3), Coord(4,3)]);
 		let board = Board::from_position(9, Color::White, white, black);
 		assert!(!board.color_connected(Color::Black));
 		assert!(board.color_connected(Color::White));
@@ -644,8 +644,8 @@ mod tests {
 	#[test]
 	#[should_panic]
 	fn from_position_out_of_bounds_panic() {
-		let mut white = HashSet::new();
+		let mut white = OrdSet::new();
 		white.insert(Coord(10,1));
-		Board::from_position(9, Color::White, white, HashSet::new());
+		Board::from_position(9, Color::White, white, OrdSet::new());
 	}
 }
