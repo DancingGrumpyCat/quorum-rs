@@ -234,7 +234,9 @@ mod tests {
 		assert_eq!(board.black_reserve, 1);
 		let expected_white: OrdSet<_> = vec![Coord(2, 8), Coord(5, 8), Coord(1, 4), Coord(4, 5), Coord(1, 1), Coord(8, 7), Coord(6, 6), Coord(2, 3), Coord(1, 0), Coord(5, 5), Coord(6, 3), Coord(6, 5), Coord(8, 6), Coord(6, 4), Coord(2, 2), Coord(4, 7), Coord(7, 8), Coord(1, 2), Coord(4, 8)].into();
 		let expected_black: OrdSet<_> = vec![Coord(3, 5), Coord(0, 7), Coord(3, 2), Coord(4, 2), Coord(3, 4), Coord(2, 5), Coord(2, 7), Coord(0, 6), Coord(4, 4), Coord(3, 3), Coord(5, 2), Coord(4, 3), Coord(1, 6), Coord(5, 0), Coord(2, 6), Coord(6, 0), Coord(6, 1), Coord(0, 5), Coord(5, 1)].into();
-		assert_eq!(board.white, expected_white);
-		assert_eq!(board.black, expected_black);
+		let actual_white: Vec<Coord> = board.white.keys().cloned().collect();
+		let actual_black: Vec<Coord> = board.black.keys().cloned().collect();
+		assert_eq!(OrdSet::from(actual_white), expected_white);
+		assert_eq!(OrdSet::from(actual_black), expected_black);
 	}
 }

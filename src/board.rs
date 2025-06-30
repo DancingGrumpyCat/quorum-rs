@@ -131,18 +131,33 @@ impl PartialEq for Board {
 }
 
 impl Board {
-	pub fn from_position(board_size: i32, whose_move: Color, white: OrdMap<Coord, ConnectionLabel>, black: OrdMap<Coord, ConnectionLabel>) -> Board {
-		let white_illegals: Vec<_> = white.keys().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
-		if !white_illegals.is_empty() {
-			panic!("White pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", white);
+	pub fn from_position<T>(board_size: i32, whose_move: Color, white: T, black: T) -> Board
+	where T: IntoIterator<Item=Coord> {
+		let white_coords: Vec<_> = white.into_iter().collect();
+		let black_coords: Vec<_> = black.into_iter().collect();
+		let white_reserve = (N_PIECES_PER_COLOR - white_coords.len()).try_into().unwrap_or(0);
+		let black_reserve = (N_PIECES_PER_COLOR - black_coords.len()).try_into().unwrap_or(0);
+		let mut board = Board {
+			board_size, whose_move,
+			white: OrdMap::new(), black: OrdMap::new(),
+			white_reserve, black_reserve,
+			max_gap: 2, next_white_label: 0, next_black_label: 0, zobrist_hash: 0
+		};
+		for white_coord in white_coords {
+			let Coord(x, y) = white_coord;
+			if x < 0 || y < 0 || x >= board_size || y >= board_size {
+				panic!("White pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", white_coord);
+			}
+			board.insert_for(Color::White, white_coord);
 		}
-		let black_illegals: Vec<_> = black.keys().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
-		if !black_illegals.is_empty() {
-			panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black);
+		for black_coord in black_coords {
+			let Coord(x, y) = black_coord;
+			if x < 0 || y < 0 || x >= board_size || y >= board_size {
+				panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black_coord);
+			}
+			board.insert_for(Color::Black, black_coord);
 		}
-		let white_reserve = (N_PIECES_PER_COLOR - white.len()).try_into().unwrap_or(0);
-		let black_reserve = (N_PIECES_PER_COLOR - black.len()).try_into().unwrap_or(0);
-		Board { board_size, whose_move, white, black, white_reserve, black_reserve, max_gap: 2, next_white_label: 0, next_black_label: 0, zobrist_hash: 0 }
+		board
 	}
 
 	#[inline]
@@ -169,15 +184,15 @@ impl Board {
 	pub fn start_position(board_size: i32) -> Board {
 		assert!(board_size >= 8);
 
-		let mut black = OrdMap::new();
-		let mut white = OrdMap::new();
+		let mut black = Vec::with_capacity(20);
+		let mut white = Vec::with_capacity(20);
 		for x in 0..board_size {
 			for y in 0..board_size {
 				if x + y < 4 || x + y > 2*board_size - 6 {
-					white.insert(Coord(x,y), x/5);
+					white.push(Coord(x,y));
 				}
 				else if board_size - x + y < 5 || board_size - x + y > 2*board_size - 5 {
-					black.insert(Coord(x,y), x/5);
+					black.push(Coord(x,y));
 				}
 			}
 		}
@@ -263,6 +278,22 @@ impl Board {
 	}
 
 	#[inline]
+	pub fn next_label_of(&self, color: Color) -> ConnectionLabel {
+		match color {
+			Color::White => self.next_white_label,
+			Color::Black => self.next_black_label
+		}
+	}
+
+	#[inline]
+	pub fn next_label_of_mut(&mut self, color: Color) -> &mut ConnectionLabel {
+		match color {
+			Color::White => &mut self.next_white_label,
+			Color::Black => &mut self.next_black_label
+		}
+	}
+
+	#[inline]
 	pub fn reserve_of(&self, color: Color) -> i32 {
 		match color {
 			Color::White => self.white_reserve,
@@ -276,50 +307,6 @@ impl Board {
 			Color::White => &mut self.white_reserve,
 			Color::Black => &mut self.black_reserve
 		}
-	}
-
-	#[inline]
-	pub fn insert_for(&mut self, color: Color, inserted: Coord) {
-		let neighbors: Vec<Coord> = self.orthogonal_neighborhood(inserted)
-			.into_iter()
-			.filter(|neighbor| self.pieces_of(color).contains_key(neighbor))
-			.collect();
-		let neighbor_labels: Vec<ConnectionLabel> = self.orthogonal_neighborhood(inserted)
-			.into_iter()
-			.filter_map(|neighbor| self.pieces_of(color).get(&neighbor))
-			.cloned()
-			.collect();
-		if neighbors.is_empty() {
-			// Adding an isolated stone
-			let next_label = match color {
-				Color::White => self.next_white_label,
-				Color::Black => self.next_black_label
-			};
-			self.pieces_of_mut(color).insert(inserted, next_label);
-			match color {
-				Color::White => self.next_white_label += 1,
-				Color::Black => self.next_black_label += 1
-			}
-		} else if neighbor_labels.iter().all_equal() {
-			// Adding to an existing group
-			self.pieces_of_mut(color).insert(inserted, neighbor_labels[0]);
-		} else {
-			// Previously-unconnected groups are being connected
-			let min_label = *neighbor_labels.iter().min().unwrap();
-			for (neighbor, label) in neighbors.into_iter().zip(neighbor_labels) {
-				if label != min_label {
-					for coord in self.flood_fill(color, neighbor) {
-						self.pieces_of_mut(color)[&coord] = min_label;
-					}
-				}
-			}
-			self.pieces_of_mut(color).insert(inserted, min_label);
-		}
-	}
-
-	#[inline]
-	pub fn remove_for(&mut self, color: Color, coord: Coord) -> Option<Coord> {
-		todo!()
 	}
 
 	#[inline]
@@ -363,9 +350,69 @@ impl Board {
 	}
 
 	#[inline]
+	pub fn insert_for(&mut self, color: Color, inserted: Coord) {
+		let neighbors: Vec<Coord> = self.orthogonal_neighborhood(inserted)
+			.into_iter()
+			.filter(|neighbor| self.pieces_of(color).contains_key(neighbor))
+			.collect();
+		let neighbor_labels: Vec<ConnectionLabel> = self.orthogonal_neighborhood(inserted)
+			.into_iter()
+			.filter_map(|neighbor| self.pieces_of(color).get(&neighbor))
+			.cloned()
+			.collect();
+		if neighbors.is_empty() {
+			// Adding an isolated stone
+			let next_label = self.next_label_of(color);
+			self.pieces_of_mut(color).insert(inserted, next_label);
+			*self.next_label_of_mut(color) += 1;
+		} else if neighbor_labels.iter().all_equal() {
+			// Adding to an existing group
+			self.pieces_of_mut(color).insert(inserted, neighbor_labels[0]);
+		} else {
+			// Previously-unconnected groups are being connected
+			let min_label = *neighbor_labels.iter().min().unwrap();
+			for (neighbor, label) in neighbors.into_iter().zip(neighbor_labels) {
+				if label != min_label {
+					for coord in self.flood_fill(color, neighbor) {
+						self.pieces_of_mut(color)[&coord] = min_label;
+					}
+				}
+			}
+			self.pieces_of_mut(color).insert(inserted, min_label);
+		}
+	}
+
+	#[inline]
+	pub fn remove_for(&mut self, color: Color, removed: Coord) {
+		let neighbors: Vec<Coord> = self.orthogonal_neighborhood(removed)
+			.into_iter()
+			.filter(|neighbor| self.pieces_of(color).contains_key(neighbor))
+			.collect();
+		debug_assert!(neighbors.iter().map(|neighbor| self.pieces_of(color)[neighbor]).all_equal());
+		let removed_label = self.pieces_of_mut(color).remove(&removed);
+		debug_assert!(removed_label.is_some());
+		if removed_label.unwrap() == self.next_label_of(color) && neighbors.is_empty() {
+			*self.next_label_of_mut(color) -= 1;
+		} else {
+			// To avoid relabelling the same connected component twice, we check
+			// whether its label is < self.next_label_of(color) at the start of
+			// execution. If so, it has not been relabelled yet.
+			let old_next_label = self.next_label_of(color);
+			for neighbor in neighbors.into_iter().skip(1) {
+				if self.pieces_of(color)[&neighbor] < old_next_label {
+					for coord in self.flood_fill(color, neighbor) {
+						self.pieces_of_mut(color)[&coord] = self.next_label_of(color);
+					}
+					*self.next_label_of_mut(color) += 1;
+				}
+			}
+		}
+	}
+
+
+	#[inline]
 	pub fn color_connected(&self, color: Color) -> bool {
-		let source: Coord = *self.pieces_of(color).keys().next().unwrap();
-		self.flood_fill(color, source).len() == self.pieces_of(color).len()
+		self.pieces_of(color).values().all_equal()
 	}
 
 	#[inline]
@@ -512,7 +559,7 @@ mod tests {
 	fn test_valid_move() {
 		const BOARD_SIZE: i32 = 9;
 		let mut board = Board::start_position(BOARD_SIZE);
-		board.white.insert(Coord(4,3));
+		board.insert_for(Color::White, Coord(4,3));
 
 		assert_eq!(None, board.valid_move(&Move::movement(Color::White, Coord(0,0), Coord(1,1))));
 
