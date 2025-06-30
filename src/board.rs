@@ -149,6 +149,11 @@ impl Board {
 	}
 
 	#[inline]
+	pub fn is_occupied(&self, coord: Coord) -> bool {
+		self.white.contains(&coord) || self.black.contains(&coord)
+	}
+
+	#[inline]
 	pub fn all_coords(&self) -> impl Iterator<Item=Coord> + '_ {
 		(0..self.board_size).flat_map(|x| (0..self.board_size).map(move |y| Coord(x,y)))
 	}
@@ -211,7 +216,7 @@ impl Board {
 					return Some(IllegalMoveReason::PivotNotOwned);
 				}
 				let dest = mov.dest();
-				if self.all_pieces().contains(&dest) {
+				if self.is_occupied(dest) {
 					return Some(IllegalMoveReason::DestNotEmpty);
 				}
 				if !self.in_bounds(dest) {
@@ -228,7 +233,7 @@ impl Board {
 				None
 			},
 			Move::Placement { color, at } => {
-				if self.all_pieces().contains(at) {
+				if self.is_occupied(*at) {
 					Some(IllegalMoveReason::DestNotEmpty)
 				} else if self.reserve_of(*color) <= 0 {
 					Some(IllegalMoveReason::EmptyReserve)
@@ -345,7 +350,7 @@ impl Board {
 		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
 			self.pieces_of(color.opponent()).contains(&maybe_captured)
 				&& self.neighborhood(maybe_captured).into_iter().all(|liberty|
-					(self.all_pieces().contains(&liberty) || liberty == dest)
+					(self.is_occupied(liberty) || liberty == dest)
 					&& !self.neighborhood(dest).contains(&active))
 		})
 	}
@@ -390,7 +395,7 @@ impl Board {
 
 		let placements = self.all_coords()
 			// TODO calculate reserve_of ahead of time
-			.filter(move |coord| self.reserve_of(color) > 0 && !self.all_pieces().contains(coord))
+			.filter(move |coord| self.reserve_of(color) > 0 && !self.is_occupied(*coord))
 			.map(move |coord| Move::Placement { color, at: coord });
 
 		mvmts.into_iter().filter(|x| self.valid_move(x).is_none())
