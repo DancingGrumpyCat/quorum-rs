@@ -1,4 +1,4 @@
-use im::OrdMap;
+use im::{OrdMap, OrdSet};
 use itertools::Itertools;
 use std::cmp;
 
@@ -279,17 +279,47 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn insert_for(&self, color: Color, coord: Coord) -> Option<Coord> {
-		let mut pieces = self.pieces_of_mut(color);
-		
+	pub fn insert_for(&mut self, color: Color, inserted: Coord) {
+		let neighbors: Vec<Coord> = self.orthogonal_neighborhood(inserted)
+			.into_iter()
+			.filter(|neighbor| self.pieces_of(color).contains_key(neighbor))
+			.collect();
+		let neighbor_labels: Vec<ConnectionLabel> = self.orthogonal_neighborhood(inserted)
+			.into_iter()
+			.filter_map(|neighbor| self.pieces_of(color).get(&neighbor))
+			.cloned()
+			.collect();
+		if neighbors.is_empty() {
+			// Adding an isolated stone
+			let next_label = match color {
+				Color::White => self.next_white_label,
+				Color::Black => self.next_black_label
+			};
+			self.pieces_of_mut(color).insert(inserted, next_label);
+			match color {
+				Color::White => self.next_white_label += 1,
+				Color::Black => self.next_black_label += 1
+			}
+		} else if neighbor_labels.iter().all_equal() {
+			// Adding to an existing group
+			self.pieces_of_mut(color).insert(inserted, neighbor_labels[0]);
+		} else {
+			// Previously-unconnected groups are being connected
+			let min_label = *neighbor_labels.iter().min().unwrap();
+			for (neighbor, label) in neighbors.into_iter().zip(neighbor_labels) {
+				if label != min_label {
+					for coord in self.flood_fill(color, neighbor) {
+						self.pieces_of_mut(color)[&coord] = min_label;
+					}
+				}
+			}
+			self.pieces_of_mut(color).insert(inserted, min_label);
+		}
 	}
 
 	#[inline]
-	pub fn remove_for(&self, color: Color, coord: Coord) -> Option<Coord> {
-		match color {
-			Color::White => self.white.clone().remove(&coord),
-			Color::Black => self.black.clone().insert(coord)
-		}
+	pub fn remove_for(&mut self, color: Color, coord: Coord) -> Option<Coord> {
+		todo!()
 	}
 
 	#[inline]
@@ -322,7 +352,7 @@ impl Board {
 		while !queued.is_empty() {
 			let mut next_queued: OrdSet<Coord> = OrdSet::new();
 			for neighbor in queued {
-				if self.pieces_of(color).contains(&neighbor) && !visited.contains(&neighbor) {
+				if self.pieces_of(color).contains_key(&neighbor) && !visited.contains(&neighbor) {
 					visited.insert(neighbor);
 					next_queued.extend(self.orthogonal_neighborhood(neighbor));
 				}
@@ -334,7 +364,7 @@ impl Board {
 
 	#[inline]
 	pub fn color_connected(&self, color: Color) -> bool {
-		let source: Coord = *self.pieces_of(color).iter().next().unwrap();
+		let source: Coord = *self.pieces_of(color).keys().next().unwrap();
 		self.flood_fill(color, source).len() == self.pieces_of(color).len()
 	}
 
@@ -462,10 +492,10 @@ impl Board {
 		let mut new_board = self.clone();
 		let delta = self.move_delta(mov);
 		new_board.zobrist_hash = self.apply_to_zobrist_hash(&delta);
-		for coord in delta.white_minus { new_board.white.remove(&coord); }
-		for coord in delta.white_plus { new_board.white.insert(coord); }
-		for coord in delta.black_minus { new_board.black.remove(&coord); }
-		for coord in delta.black_plus { new_board.black.insert(coord); }
+		for coord in delta.white_minus { new_board.remove_for(Color::White, coord); }
+		for coord in delta.white_plus { new_board.insert_for(Color::White, coord); }
+		for coord in delta.black_minus { new_board.remove_for(Color::Black, coord); }
+		for coord in delta.black_plus { new_board.insert_for(Color::Black, coord); }
 		new_board.white_reserve += delta.white_reserve;
 		new_board.black_reserve += delta.black_reserve;
 
