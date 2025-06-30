@@ -1,12 +1,13 @@
 use im::OrdSet;
 use itertools::Itertools;
 use std::cmp;
+use tinyvec::ArrayVec;
 
 use crate::hashes::*;
 
 const N_PIECES_PER_COLOR: usize = 20;
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Coord(pub i32, pub i32);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -292,9 +293,9 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn neighborhood(&self, coord: Coord) -> Vec<Coord> {
+	pub fn neighborhood(&self, coord: Coord) -> impl Iterator<Item=Coord> + '_ {
 		let Coord(x, y) = coord;
-		let mut neighbors = vec![];
+		let mut neighbors: ArrayVec<[Coord; 8]> = ArrayVec::new();
 		for dx in -1..=1 {
 			for dy in -1..=1 {
 				if dx == 0 && dy == 0 { continue; }
@@ -305,19 +306,19 @@ impl Board {
 				neighbors.push(position);
 			}
 		}
-		neighbors
+		neighbors.into_iter()
 	}
 
 	#[inline]
-	pub fn orthogonal_neighborhood(&self, coord: Coord) -> Vec<Coord> {
+	pub fn orthogonal_neighborhood(&self, coord: Coord) -> impl Iterator<Item=Coord> + '_ {
 		let Coord(x,y) = coord;
-		vec![Coord(x+1, y), Coord(x-1, y), Coord(x, y+1), Coord(x, y-1)]
+		vec![Coord(x+1, y), Coord(x-1, y), Coord(x, y+1), Coord(x, y-1)].into_iter()
 	}
 
 	#[inline]
 	pub fn flood_fill(&self, color: Color, source: Coord) -> OrdSet<Coord> {
 		let mut visited = OrdSet::from(vec![source]);
-		let mut queued: OrdSet<Coord> = self.orthogonal_neighborhood(source).into_iter().collect();
+		let mut queued: OrdSet<Coord> = self.orthogonal_neighborhood(source).collect();
 		while !queued.is_empty() {
 			let mut next_queued: OrdSet<Coord> = OrdSet::new();
 			for neighbor in queued {
@@ -346,9 +347,9 @@ impl Board {
 
 	#[inline]
 	pub fn capturable_around(&self, color: Color, active: Coord, dest: Coord) -> impl Iterator<Item=Coord> + '_ {
-		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
+		self.neighborhood(dest).filter(move |&maybe_captured| {
 			self.pieces_of(color.opponent()).contains(&maybe_captured)
-				&& self.neighborhood(maybe_captured).into_iter().all(|liberty|
+				&& self.neighborhood(maybe_captured).all(|liberty|
 					(self.is_occupied(liberty) || liberty == dest)
 					&& !self.neighborhood(dest).contains(&active))
 		})
@@ -356,7 +357,7 @@ impl Board {
 
 	#[inline]
 	pub fn convertible_around(& self, color: Color, active: Coord, dest: Coord ) -> impl Iterator<Item=Coord> + '_ {
-		self.neighborhood(dest).into_iter().filter(move |neighbor| {
+		self.neighborhood(dest).filter(move |neighbor| {
 			let flanker_x = (neighbor.0 - dest.0) * 2 + dest.0;
 			let flanker_y = (neighbor.1 - dest.1) * 2 + dest.1;
 			let flanker = Coord(flanker_x, flanker_y);
