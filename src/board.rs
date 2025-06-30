@@ -1,4 +1,4 @@
-use im::OrdSet;
+use im::OrdMap;
 use itertools::Itertools;
 use std::cmp;
 
@@ -102,13 +102,16 @@ pub enum IllegalMoveReason {
 	ActiveNotOwned, PivotNotOwned, DestNotEmpty, DestNotInBounds, GapTooBig, EmptyReserve, TriedConvertCapture
 }
 
+type ConnectionLabel = i32;
 
 #[derive(Clone, Eq, Debug)]
 pub struct Board {
 	pub board_size: i32,
 	pub max_gap: i32,
-	pub white: OrdSet<Coord>,
-	pub black: OrdSet<Coord>,
+	pub white: OrdMap<Coord, ConnectionLabel>,
+	pub black: OrdMap<Coord, ConnectionLabel>,
+	pub next_white_label: ConnectionLabel,
+	pub next_black_label: ConnectionLabel,
 	pub white_reserve: i32,
 	pub black_reserve: i32,
 	pub whose_move: Color,
@@ -128,28 +131,28 @@ impl PartialEq for Board {
 }
 
 impl Board {
-	pub fn from_position(board_size: i32, whose_move: Color, white: OrdSet<Coord>, black: OrdSet<Coord>) -> Board {
-		let white_illegals: Vec<_> = white.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
+	pub fn from_position(board_size: i32, whose_move: Color, white: OrdMap<Coord, ConnectionLabel>, black: OrdMap<Coord, ConnectionLabel>) -> Board {
+		let white_illegals: Vec<_> = white.keys().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
 		if !white_illegals.is_empty() {
 			panic!("White pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", white);
 		}
-		let black_illegals: Vec<_> = black.iter().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
+		let black_illegals: Vec<_> = black.keys().cloned().filter(|&Coord(x, y)| x < 0 || y < 0 || x >= board_size || y >= board_size).collect();
 		if !black_illegals.is_empty() {
 			panic!("Black pieces out of bounds for {board_size:?}x{board_size:?} board: {:?}", black);
 		}
 		let white_reserve = (N_PIECES_PER_COLOR - white.len()).try_into().unwrap_or(0);
 		let black_reserve = (N_PIECES_PER_COLOR - black.len()).try_into().unwrap_or(0);
-		Board { board_size, whose_move, white, black, white_reserve, black_reserve, max_gap: 2, zobrist_hash: 0 }
+		Board { board_size, whose_move, white, black, white_reserve, black_reserve, max_gap: 2, next_white_label: 0, next_black_label: 0, zobrist_hash: 0 }
 	}
 
 	#[inline]
 	pub fn all_pieces(&self) -> impl Iterator<Item=Coord> + '_ {
-		self.white.iter().chain(self.black.iter()).cloned()
+		self.white.keys().chain(self.black.keys()).cloned()
 	}
 
 	#[inline]
 	pub fn is_occupied(&self, coord: Coord) -> bool {
-		self.white.contains(&coord) || self.black.contains(&coord)
+		self.white.contains_key(&coord) || self.black.contains_key(&coord)
 	}
 
 	#[inline]
@@ -166,15 +169,15 @@ impl Board {
 	pub fn start_position(board_size: i32) -> Board {
 		assert!(board_size >= 8);
 
-		let mut black = OrdSet::new();
-		let mut white = OrdSet::new();
+		let mut black = OrdMap::new();
+		let mut white = OrdMap::new();
 		for x in 0..board_size {
 			for y in 0..board_size {
 				if x + y < 4 || x + y > 2*board_size - 6 {
-					white.insert(Coord(x,y));
+					white.insert(Coord(x,y), x/5);
 				}
 				else if board_size - x + y < 5 || board_size - x + y > 2*board_size - 5 {
-					black.insert(Coord(x,y));
+					black.insert(Coord(x,y), x/5);
 				}
 			}
 		}
@@ -185,11 +188,11 @@ impl Board {
 	pub fn show_board(&self) {
 		for y in (0..self.board_size).rev() {
 			for x in 0..self.board_size {
-				if self.white.contains(&Coord(x,y)) && self.black.contains(&Coord(x,y)) {
+				if self.white.contains_key(&Coord(x,y)) && self.black.contains_key(&Coord(x,y)) {
 					print!("☯");
-				} else if self.white.contains(&Coord(x,y)) {
+				} else if self.white.contains_key(&Coord(x,y)) {
 					print!("●");
-				} else if self.black.contains(&Coord(x,y)) {
+				} else if self.black.contains_key(&Coord(x,y)) {
 					print!("○");
 				} else if ((x as f32) + 0.5 - ((self.board_size as f32) / 2.0)).abs() < 1.0
 				           && ((y as f32) + 0.5 - ((self.board_size as f32) / 2.0)).abs() < 1.0 {
@@ -208,10 +211,10 @@ impl Board {
 		match mov {
 			Move::Movement { color, active, pivot, conversions } => {
 				let pieces = if *color == Color::Black { &self.black } else { &self.white };
-				if !pieces.contains(active) {
+				if !pieces.contains_key(active) {
 					return Some(IllegalMoveReason::ActiveNotOwned);
 				}
-				if !pieces.contains(pivot) {
+				if !pieces.contains_key(pivot) {
 					return Some(IllegalMoveReason::PivotNotOwned);
 				}
 				let dest = mov.dest();
@@ -244,7 +247,7 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn pieces_of(&self, color: Color) -> &OrdSet<Coord> {
+	pub fn pieces_of(&self, color: Color) -> &OrdMap<Coord, ConnectionLabel> {
 		match color {
 			Color::White => &self.white,
 			Color::Black => &self.black
@@ -252,7 +255,7 @@ impl Board {
 	}
 
 	#[inline]
-	pub fn pieces_of_mut(&mut self, color: Color) -> &mut OrdSet<Coord> {
+	pub fn pieces_of_mut(&mut self, color: Color) -> &mut OrdMap<Coord, ConnectionLabel> {
 		match color {
 			Color::White => &mut self.white,
 			Color::Black => &mut self.black
@@ -277,10 +280,8 @@ impl Board {
 
 	#[inline]
 	pub fn insert_for(&self, color: Color, coord: Coord) -> Option<Coord> {
-		match color {
-			Color::White => self.white.clone().insert(coord),
-			Color::Black => self.black.clone().insert(coord)
-		}
+		let mut pieces = self.pieces_of_mut(color);
+		
 	}
 
 	#[inline]
@@ -347,7 +348,7 @@ impl Board {
 	#[inline]
 	pub fn capturable_around(&self, color: Color, active: Coord, dest: Coord) -> impl Iterator<Item=Coord> + '_ {
 		self.neighborhood(dest).into_iter().filter(move |&maybe_captured| {
-			self.pieces_of(color.opponent()).contains(&maybe_captured)
+			self.pieces_of(color.opponent()).contains_key(&maybe_captured)
 				&& self.neighborhood(maybe_captured).into_iter().all(|liberty|
 					(self.is_occupied(liberty) || liberty == dest)
 					&& !self.neighborhood(dest).contains(&active))
@@ -362,9 +363,9 @@ impl Board {
 			let flanker = Coord(flanker_x, flanker_y);
 
 			flanker != active
-				&& self.pieces_of(color.opponent()).contains(neighbor)
-				&& self.pieces_of(color).contains(&flanker)
-				&& !self.capturable_around(color, active, dest).collect::<Vec<_>>().contains(&active)
+				&& self.pieces_of(color.opponent()).contains_key(neighbor)
+				&& self.pieces_of(color).contains_key(&flanker)
+				&& !self.capturable_around(color, active, dest).contains(&active)
 		})
 	}
 
@@ -372,8 +373,8 @@ impl Board {
 	pub fn moves_of(&self, color: Color) -> impl Iterator<Item=Move> + '_ {
 		let mut mvmts: Vec<Move> = vec![];
 
-		for active in self.pieces_of(color).iter().cloned() {
-			for pivot in self.pieces_of(color).iter().cloned() {
+		for active in self.pieces_of(color).keys().cloned() {
+			for pivot in self.pieces_of(color).keys().cloned() {
 				if self.valid_move(&Move::movement(color, active, pivot)).is_none() {
 					if self.reserve_of(color) < 0 {
 						panic!("Negative reserve for {:?}: {} on board with {} in reserve",

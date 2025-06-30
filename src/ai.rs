@@ -120,20 +120,20 @@ pub struct CentroidDistanceHeuristic { pub power: f32 }
 impl Heuristic for CentroidDistanceHeuristic {
 	#[inline]
 	fn heuristic(&self, board: &Board) -> Valuation {
-		let white_centroid = board.white.iter().cloned().map(|Coord(x,y)|
+		let white_centroid = board.white.keys().cloned().map(|Coord(x,y)|
 			(x as f32 / board.white.len() as f32,
 			 y as f32 / board.white.len() as f32)
 		).reduce(|(ax, ay), (bx, by)| (ax + bx, ay + by)).unwrap_or((0.0, 0.0));
-		let black_centroid = board.black.iter().cloned().map(|Coord(x,y)|
+		let black_centroid = board.black.keys().cloned().map(|Coord(x,y)|
 			(x as f32 / board.black.len() as f32,
 			 y as f32 / board.black.len() as f32)
 		).reduce(|(ax, ay), (bx, by)| (ax + bx, ay + by)).unwrap_or((0.0, 0.0));
 
-		let white_cum_distance: f32 = board.white.iter().cloned().map(
+		let white_cum_distance: f32 = board.white.keys().cloned().map(
 			|Coord(x, y)| ((x as f32 - white_centroid.0).abs() + (y as f32 - white_centroid.1).abs()).powf(self.power)
 		).sum();
 
-		let black_cum_distance: f32 = board.black.iter().cloned().map(
+		let black_cum_distance: f32 = board.black.keys().cloned().map(
 			|Coord(x, y)| ((x as f32 - black_centroid.0).abs() + (y as f32 - black_centroid.1).abs()).powf(self.power)
 		).sum();
 
@@ -149,14 +149,14 @@ impl Heuristic for ConnectedComponentsHeuristic {
 		let mut white_pieces = board.white.clone();
 		let mut n_white_components = 0;
 		while !white_pieces.is_empty() {
-			let source = *white_pieces.iter().next().unwrap();
+			let source = *white_pieces.keys().next().unwrap();
 			n_white_components += 1;
 			white_pieces = white_pieces.difference(board.flood_fill(Color::White, source));
 		}
 		let mut black_pieces = board.black.clone();
 		let mut n_black_components = 0;
 		while !black_pieces.is_empty() {
-			let source = *black_pieces.iter().next().unwrap();
+			let source = *black_pieces.keys().next().unwrap();
 			n_black_components += 1;
 			black_pieces = black_pieces.difference(board.flood_fill(Color::Black, source));
 		}
@@ -173,7 +173,7 @@ impl Heuristic for NthSmallestStringHeuristic {
 		let mut white_sizes = BinaryHeap::new();
 		let mut white_pieces = board.white.clone();
 		while !white_pieces.is_empty() {
-			let source = *white_pieces.iter().next().unwrap();
+			let source = *white_pieces.keys().next().unwrap();
 			let string = board.flood_fill(Color::White, source);
 			white_sizes.push(string.len());
 			white_pieces = white_pieces.difference(string);
@@ -186,7 +186,7 @@ impl Heuristic for NthSmallestStringHeuristic {
 		let mut black_sizes = BinaryHeap::new();
 		let mut black_pieces = board.black.clone();
 		while !black_pieces.is_empty() {
-			let source = *black_pieces.iter().next().unwrap();
+			let source = *black_pieces.keys().next().unwrap();
 			let string = board.flood_fill(Color::Black, source);
 			black_sizes.push(string.len());
 			black_pieces = black_pieces.difference(string);
