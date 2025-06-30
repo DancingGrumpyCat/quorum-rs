@@ -151,14 +151,18 @@ impl Heuristic for ConnectedComponentsHeuristic {
 		while !white_pieces.is_empty() {
 			let source = *white_pieces.keys().next().unwrap();
 			n_white_components += 1;
-			white_pieces = white_pieces.difference(board.flood_fill(Color::White, source));
+			for coord in board.flood_fill(Color::White, source) {
+				white_pieces.remove(&coord);
+			}
 		}
 		let mut black_pieces = board.black.clone();
 		let mut n_black_components = 0;
 		while !black_pieces.is_empty() {
 			let source = *black_pieces.keys().next().unwrap();
 			n_black_components += 1;
-			black_pieces = black_pieces.difference(board.flood_fill(Color::Black, source));
+			for coord in board.flood_fill(Color::Black, source) {
+				black_pieces.remove(&coord);
+			}
 		}
 
 		n_black_components as Valuation - n_white_components as Valuation
@@ -176,7 +180,9 @@ impl Heuristic for NthSmallestStringHeuristic {
 			let source = *white_pieces.keys().next().unwrap();
 			let string = board.flood_fill(Color::White, source);
 			white_sizes.push(string.len());
-			white_pieces = white_pieces.difference(string);
+			for coord in board.flood_fill(Color::White, source) {
+				white_pieces.remove(&coord);
+			}
 		}
 		for _ in 0..(self.n as Valuation - 1) {
 			white_sizes.pop();
@@ -189,7 +195,9 @@ impl Heuristic for NthSmallestStringHeuristic {
 			let source = *black_pieces.keys().next().unwrap();
 			let string = board.flood_fill(Color::Black, source);
 			black_sizes.push(string.len());
-			black_pieces = black_pieces.difference(string);
+			for coord in board.flood_fill(Color::Black, source) {
+				black_pieces.remove(&coord);
+			}
 		}
 		for _ in 0..(self.n as Valuation - 1) {
 			black_sizes.pop();
